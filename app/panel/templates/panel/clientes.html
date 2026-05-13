@@ -1,0 +1,383 @@
+{% extends "panel/base.html" %}
+{% block title %}Clientes{% endblock %}
+{% block page_title %}Clientes{% endblock %}
+
+{% block content %}
+<div class="list-toolbar">
+    <form method="GET" class="search-form" id="clientes-search-form">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+        <input type="search" name="q" value="{{ search }}" placeholder="Buscar cliente por nombre o teléfono…" autocomplete="off" id="clientes-search-input">
+    </form>
+    <button type="button" class="btn btn-primary" data-open-modal="modal-nuevo-cliente">+ Nuevo cliente</button>
+</div>
+
+<div class="card list-card" id="clientes-list-wrapper">
+    {% if clientes %}
+    <table class="data-table clientes-table">
+        <thead>
+            <tr>
+                <th>Cliente</th>
+                <th>Teléfono</th>
+                <th>Reservas</th>
+                <th>Última reserva</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for row in clientes %}
+                <tr>
+                    <td>
+                        <div class="cliente-cell">
+                            <span class="avatar avatar-sm avatar-soft">{{ row.cliente.nombre[:1]|upper }}</span>
+                            <div class="cliente-main">
+                                <span class="cliente-name">{{ row.cliente.nombre }}</span>
+                                <button type="button" class="btn-link cliente-detail-action" data-open-cliente="{{ row.cliente.id }}">Ver detalle</button>
+                            </div>
+                        </div>
+                    </td>
+                    <td class="phone-cell">{{ row.cliente.telefono|phone_local }}</td>
+                    <td><span class="badge badge-soft">{{ row.total_reservas }}</span></td>
+                    <td>{% if row.ultima_fecha %}{{ row.ultima_fecha.strftime('%d/%m/%Y') }}{% else %}—{% endif %}</td>
+                </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+        <div class="empty">
+            <p>No hay clientes registrados aún.</p>
+        </div>
+    {% endif %}
+</div>
+
+<!-- Drawer detalle -->
+<div class="drawer" id="drawer-cliente" hidden>
+    <div class="drawer-backdrop" data-close-drawer></div>
+    <aside class="drawer-card">
+        <header class="drawer-header">
+            <h3>Detalles del cliente</h3>
+            <button type="button" class="modal-close" data-close-drawer aria-label="Cerrar">×</button>
+        </header>
+        <div class="drawer-body" id="drawer-body">
+            <p class="drawer-loading">Cargando…</p>
+        </div>
+    </aside>
+</div>
+
+<!-- Modal nuevo cliente -->
+<div class="modal" id="modal-nuevo-cliente" hidden>
+    <div class="modal-backdrop" data-close-modal></div>
+    <div class="modal-card">
+        <header class="modal-header">
+            <h3>Nuevo cliente</h3>
+            <button type="button" class="modal-close" data-close-modal aria-label="Cerrar">×</button>
+        </header>
+        <form method="POST" action="{{ url_for('panel.cliente_nuevo') }}" class="modal-body" id="form-nuevo-cliente" novalidate>
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <label class="field" data-field="nombre">
+                <span class="field-label">Nombre</span>
+                <input type="text" name="nombre" maxlength="100" autocomplete="name">
+                <span class="field-error" data-error-for="nombre"></span>
+            </label>
+            <label class="field" data-field="telefono">
+                <span class="field-label">Teléfono</span>
+                <input type="tel" name="telefono" inputmode="tel" maxlength="15" autocomplete="tel">
+                <span class="field-error" data-error-for="telefono"></span>
+            </label>
+        </form>
+        <footer class="modal-footer">
+            <button type="button" class="btn btn-ghost" data-close-modal>Cancelar</button>
+            <button type="submit" form="form-nuevo-cliente" class="btn btn-primary">Guardar</button>
+        </footer>
+    </div>
+</div>
+
+<!-- Modal eliminar cliente -->
+<div class="modal" id="modal-eliminar-cliente" hidden>
+    <div class="modal-backdrop" data-close-modal></div>
+    <div class="modal-card modal-card-sm">
+        <header class="modal-header">
+            <h3>Eliminar cliente</h3>
+            <button type="button" class="modal-close" data-close-modal aria-label="Cerrar">×</button>
+        </header>
+        <div class="modal-body">
+            <div class="modal-warning">
+                <div>
+                    <p class="modal-warning-title">¿Estás seguro de que quieres eliminar este cliente?</p>
+                    <p class="modal-warning-text" id="delete-client-warning-text">Solo se eliminará si no tiene reservas futuras confirmadas.</p>
+                </div>
+            </div>
+        </div>
+        <footer class="modal-footer modal-footer-between">
+            <button type="button" class="btn btn-ghost" data-close-modal>No, cancelar</button>
+            <form method="POST" action="" id="form-eliminar-cliente" class="inline-form">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="btn btn-soft-danger">Confirmar</button>
+            </form>
+        </footer>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function() {
+    const drawer = document.getElementById('drawer-cliente');
+    const body = document.getElementById('drawer-body');
+    const listWrapper = document.getElementById('clientes-list-wrapper');
+    const searchForm = document.getElementById('clientes-search-form');
+    const searchInput = document.getElementById('clientes-search-input');
+    const newClientForm = document.getElementById('form-nuevo-cliente');
+    const newClientModal = document.getElementById('modal-nuevo-cliente');
+    const csrfToken = "{{ csrf_token() }}";
+    let searchTimer = null;
+    let searchController = null;
+
+    document.addEventListener('click', async (event) => {
+        const btn = event.target.closest('[data-open-cliente]');
+        if (!btn) return;
+
+        const id = btn.getAttribute('data-open-cliente');
+        drawer.hidden = false;
+        body.innerHTML = '<p class="drawer-loading">Cargando…</p>';
+        try {
+            const res = await fetch(`/panel/clientes/${id}`);
+            if (!res.ok) throw new Error('not_ok');
+            const data = await res.json();
+            body.innerHTML = renderCliente(data);
+        } catch (err) {
+            body.innerHTML = '<p class="drawer-loading">No se pudo cargar el cliente.</p>';
+        }
+    });
+
+    document.addEventListener('click', (event) => {
+        const btn = event.target.closest('[data-open-delete-client-modal]');
+        if (!btn) return;
+
+        const modal = document.getElementById('modal-eliminar-cliente');
+        const deleteForm = document.getElementById('form-eliminar-cliente');
+        const warningText = document.getElementById('delete-client-warning-text');
+        if (!modal || !deleteForm) return;
+
+        deleteForm.action = btn.dataset.action || '';
+        if (warningText) {
+            const cliente = btn.dataset.cliente || 'este cliente';
+            warningText.textContent = `Se eliminará ${cliente} solo si no tiene reservas futuras confirmadas.`;
+        }
+        modal.hidden = false;
+    });
+
+    if (searchInput) {
+        searchInput.addEventListener('input', () => {
+            clearTimeout(searchTimer);
+            searchTimer = setTimeout(runLiveSearch, 180);
+        });
+    }
+
+    if (searchForm) {
+        searchForm.addEventListener('submit', (event) => {
+            event.preventDefault();
+            runLiveSearch();
+        });
+    }
+
+    if (newClientForm) {
+        newClientForm.addEventListener('submit', async (event) => {
+            event.preventDefault();
+            clearFormErrors();
+
+            const clientErrors = validateNewClient(newClientForm);
+            if (Object.keys(clientErrors).length > 0) {
+                showFormErrors(clientErrors);
+                return;
+            }
+
+            const submitButton = document.querySelector(`[form="${newClientForm.id}"][type="submit"]`);
+            if (submitButton) submitButton.disabled = true;
+
+            try {
+                const res = await fetch(newClientForm.action, {
+                    method: 'POST',
+                    body: new FormData(newClientForm),
+                    headers: { 'X-Requested-With': 'XMLHttpRequest' },
+                });
+                const data = await res.json();
+                if (!res.ok || !data.ok) {
+                    showFormErrors(data.errors || { general: 'No se pudo guardar el cliente.' });
+                    return;
+                }
+                newClientForm.reset();
+                newClientModal.hidden = true;
+                await runLiveSearch();
+            } catch (err) {
+                showFormErrors({ general: 'No se pudo guardar el cliente.' });
+            } finally {
+                if (submitButton) submitButton.disabled = false;
+            }
+        });
+    }
+
+    async function runLiveSearch() {
+        const query = searchInput ? searchInput.value.trim() : '';
+        const url = new URL('{{ url_for("panel.clientes") }}', window.location.origin);
+        if (query) url.searchParams.set('q', query);
+        url.searchParams.set('ajax', '1');
+
+        if (searchController) searchController.abort();
+        searchController = new AbortController();
+
+        try {
+            const res = await fetch(url.toString(), {
+                headers: { 'Accept': 'application/json' },
+                signal: searchController.signal,
+            });
+            if (!res.ok) throw new Error('not_ok');
+            const data = await res.json();
+            listWrapper.innerHTML = renderClientesTable(data.clientes || [], query);
+            updateSearchUrl(query);
+        } catch (err) {
+            if (err.name !== 'AbortError') {
+                listWrapper.innerHTML = '<div class="empty"><p>No se pudo cargar la búsqueda.</p></div>';
+            }
+        }
+    }
+
+    function renderClientesTable(clientes, query) {
+        if (!clientes.length) {
+            const message = query ? 'No hay clientes que coincidan con la búsqueda.' : 'No hay clientes registrados aún.';
+            return `<div class="empty"><p>${message}</p></div>`;
+        }
+
+        const rows = clientes.map(c => `
+            <tr>
+                <td>
+                    <div class="cliente-cell">
+                        <span class="avatar avatar-sm avatar-soft">${escape((c.nombre || '?').slice(0, 1).toUpperCase())}</span>
+                        <div class="cliente-main">
+                            <span class="cliente-name">${escape(c.nombre)}</span>
+                            <button type="button" class="btn-link cliente-detail-action" data-open-cliente="${c.id}">Ver detalle</button>
+                        </div>
+                    </div>
+                </td>
+                <td class="phone-cell">${escape(c.telefono)}</td>
+                <td><span class="badge badge-soft">${c.total_reservas}</span></td>
+                <td>${c.ultima_fecha ? escape(c.ultima_fecha) : '—'}</td>
+            </tr>
+        `).join('');
+
+        return `
+            <table class="data-table clientes-table">
+                <thead>
+                    <tr>
+                        <th>Cliente</th>
+                        <th>Teléfono</th>
+                        <th class="t-center">Reservas</th>
+                        <th>Última reserva</th>
+                    </tr>
+                </thead>
+                <tbody>${rows}</tbody>
+            </table>
+        `;
+    }
+
+    function renderCliente(d) {
+        const initials = (d.nombre || '?').slice(0, 1).toUpperCase();
+        const items = (d.reservas || []).map(r => {
+            const badge = r.estado === 'cancelada'
+                ? '<span class="badge badge-danger">Cancelada</span>'
+                : '';
+            return `
+                <article class="history-item">
+                    <div class="history-row">
+                        <strong>${escape(r.servicio)}</strong>
+                        <span class="history-date">${escape(r.fecha)} · ${escape(r.hora)}</span>
+                    </div>
+                    ${badge}
+                </article>
+            `;
+        }).join('') || '<p class="drawer-loading">Sin historial.</p>';
+
+        return `
+            <div class="drawer-profile">
+                <div class="avatar avatar-soft">${escape(initials)}</div>
+                <div>
+                    <div class="profile-name">${escape(d.nombre)}</div>
+                </div>
+            </div>
+            <div class="drawer-section">
+                <div class="info-row">
+                    <div>
+                        <div class="info-label">Teléfono</div>
+                        <div class="info-value">${escape(d.telefono)}</div>
+                    </div>
+                </div>
+                <div class="info-row">
+                    <div>
+                        <div class="info-label">Total reservas</div>
+                        <div class="info-value">${d.total_reservas}</div>
+                    </div>
+                </div>
+            </div>
+            <div class="drawer-actions">
+                <button type="button"
+                        class="btn btn-soft-danger btn-block"
+                        data-open-delete-client-modal
+                        data-action="/panel/clientes/${d.id}/eliminar"
+                        data-cliente="${escape(d.nombre)}">
+                    Eliminar cliente
+                </button>
+            </div>
+            <h4 class="drawer-subtitle">Historial de reservas</h4>
+            <div class="history-list">${items}</div>
+        `;
+    }
+
+    function validateNewClient(form) {
+        const errors = {};
+        const nombre = (form.nombre.value || '').trim();
+        const telefono = (form.telefono.value || '').replace(/\D/g, '');
+        const telefonoLocal = telefono.startsWith('34') && telefono.length === 11 ? telefono.slice(2) : telefono;
+
+        if (nombre.length < 2) {
+            errors.nombre = 'El nombre del cliente es obligatorio.';
+        }
+        if (!/^[6789]\d{8}$/.test(telefonoLocal)) {
+            errors.telefono = 'El teléfono debe tener 9 cifras y empezar por 6, 7, 8 o 9.';
+        }
+        return errors;
+    }
+
+    function clearFormErrors() {
+        newClientForm.querySelectorAll('.field.has-error').forEach(field => field.classList.remove('has-error'));
+        newClientForm.querySelectorAll('.field-error').forEach(error => { error.textContent = ''; });
+        const general = newClientForm.querySelector('.form-error-general');
+        if (general) general.remove();
+    }
+
+    function showFormErrors(errors) {
+        clearFormErrors();
+        Object.entries(errors).forEach(([fieldName, message]) => {
+            if (fieldName === 'general') {
+                newClientForm.insertAdjacentHTML('afterbegin', `<p class="field-error form-error-general">${escape(message)}</p>`);
+                return;
+            }
+            const field = newClientForm.querySelector(`[data-field="${fieldName}"]`);
+            const error = newClientForm.querySelector(`[data-error-for="${fieldName}"]`);
+            if (field) field.classList.add('has-error');
+            if (error) error.textContent = message;
+        });
+    }
+
+    function updateSearchUrl(query) {
+        const url = new URL(window.location.href);
+        if (query) url.searchParams.set('q', query);
+        else url.searchParams.delete('q');
+        window.history.replaceState({}, '', url.toString());
+    }
+
+    function escape(s) {
+        return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({
+            '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+        }[c]));
+    }
+})();
+</script>
+{% endblock %}

@@ -1,0 +1,448 @@
+{% extends "panel/base.html" %}
+{% block title %}Reservas{% endblock %}
+{% block page_title %}Reservas{% endblock %}
+
+{% block content %}
+<div class="reservas-toolbar">
+    <form method="GET" class="filter-form">
+        <span class="filter-label">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
+            Filtros:
+        </span>
+        <input type="hidden" name="fecha" value="{{ fecha.isoformat() }}">
+        <select name="estado" onchange="this.form.submit()">
+            <option value="confirmadas" {% if estado_filtro == 'confirmadas' %}selected{% endif %}>Confirmadas</option>
+            <option value="canceladas" {% if estado_filtro == 'canceladas' %}selected{% endif %}>Canceladas</option>
+        </select>
+    </form>
+    <button type="button" class="btn btn-primary" data-open-modal="modal-nueva-reserva">+ Nueva reserva</button>
+</div>
+
+<section class="reservas-grid">
+    <aside class="calendar card">
+        <div class="calendar-header">
+            <a href="{{ url_for('panel.reservas', fecha=prev_mes.isoformat(), estado=estado_filtro) }}" class="calendar-nav">‹</a>
+            <span class="calendar-title">{{ nombre_mes }} {{ anio }}</span>
+            <a href="{{ url_for('panel.reservas', fecha=next_mes.isoformat(), estado=estado_filtro) }}" class="calendar-nav">›</a>
+        </div>
+        <table class="calendar-table">
+            <thead>
+                <tr><th>L</th><th>M</th><th>X</th><th>J</th><th>V</th><th>S</th><th>D</th></tr>
+            </thead>
+            <tbody>
+                {% for semana in semanas %}
+                    <tr>
+                        {% for dia in semana %}
+                            {% set is_other = dia.month != mes %}
+                            {% set is_selected = dia == fecha %}
+                            <td>
+                                <a href="{{ url_for('panel.reservas', fecha=dia.isoformat(), estado=estado_filtro) }}"
+                                   class="cal-day {% if is_other %}is-out{% endif %} {% if is_selected %}is-selected{% endif %} {% if dia == hoy %}is-today{% endif %}">
+                                    {{ dia.day }}
+                                </a>
+                            </td>
+                        {% endfor %}
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </aside>
+
+    <div class="agenda card">
+        <div class="card-header">
+            <h2>Agenda del {{ fecha.strftime('%d/%m/%Y') }}</h2>
+        </div>
+
+        {% if bloques %}
+            <div class="agenda-blocks">
+                {% for bloque in bloques %}
+                    <div class="agenda-block">
+                        <span class="block-time">{{ bloque.hora }}</span>
+                        {% if bloque.reservas %}
+                            <div class="block-content">
+                                {% for r in bloque.reservas %}
+                                    {% set is_cancelled = r.estado == 'cancelada' %}
+                                    <div class="reservation-pill {% if is_cancelled %}is-cancelled{% endif %}">
+                                        <div class="rp-main">
+                                            <strong>{{ r.cliente.nombre if r.cliente else '—' }}</strong>
+                                            <span class="rp-client">{{ r.servicio.nombre if r.servicio else '—' }} · {{ r.cliente.telefono|phone_local if r.cliente else '' }}</span>
+                                        </div>
+                                        <div class="rp-side">
+                                            {% if is_cancelled %}
+                                                <span class="badge badge-danger">Cancelada</span>
+                                            {% else %}
+                                                <button type="button"
+                                                        class="btn btn-link-danger"
+                                                        data-open-cancel-modal
+                                                        data-action="{{ url_for('panel.cancelar_reserva', reserva_id=r.id) }}"
+                                                        data-fecha="{{ fecha.isoformat() }}">
+                                                    Cancelar
+                                                </button>
+                                            {% endif %}
+                                        </div>
+                                    </div>
+                                {% endfor %}
+                            </div>
+                        {% else %}
+                            <div class="block-content">
+                                <span class="block-empty">Disponible</span>
+                            </div>
+                        {% endif %}
+                    </div>
+                {% endfor %}
+            </div>
+
+            {% if agenda_pagination.total_pages > 1 %}
+                <nav class="pagination agenda-pagination" aria-label="Paginación de agenda">
+                    {% if agenda_pagination.has_prev %}
+                        <a class="pagination-link" href="{{ url_for('panel.reservas', fecha=fecha.isoformat(), estado=estado_filtro, page=agenda_pagination.prev_page) }}">Anterior</a>
+                    {% else %}
+                        <span class="pagination-link is-disabled">Anterior</span>
+                    {% endif %}
+                    <span class="pagination-status">Página {{ agenda_pagination.page }} de {{ agenda_pagination.total_pages }}</span>
+                    {% if agenda_pagination.has_next %}
+                        <a class="pagination-link" href="{{ url_for('panel.reservas', fecha=fecha.isoformat(), estado=estado_filtro, page=agenda_pagination.next_page) }}">Siguiente</a>
+                    {% else %}
+                        <span class="pagination-link is-disabled">Siguiente</span>
+                    {% endif %}
+                </nav>
+            {% endif %}
+        {% else %}
+            <div class="empty">
+                {% if dia_cerrado %}
+                    <p>La peluquería está cerrada este día{% if dia_cerrado.motivo %}: {{ dia_cerrado.motivo }}{% endif %}.</p>
+                    <a href="{{ url_for('panel.disponibilidad') }}" class="link-block">Revisar días cerrados →</a>
+                {% elif fecha == hoy %}
+                    <p>No quedan horas visibles para hoy.</p>
+                {% else %}
+                    <p>La peluquería cierra el día seleccionado.</p>
+                    <a href="{{ url_for('panel.disponibilidad') }}" class="link-block">Configurar horarios →</a>
+                {% endif %}
+            </div>
+        {% endif %}
+    </div>
+</section>
+
+<!-- Modal nueva reserva -->
+<div class="modal" id="modal-nueva-reserva" data-open-on-load="{% if abrir_modal_nueva_reserva %}true{% else %}false{% endif %}" hidden>
+    <div class="modal-backdrop" data-close-modal></div>
+    <div class="modal-card">
+        <header class="modal-header">
+            <h3>Nueva reserva</h3>
+            <button type="button" class="modal-close" data-close-modal aria-label="Cerrar">×</button>
+        </header>
+        <form method="POST" action="{{ url_for('panel.nueva_reserva') }}" class="modal-body" id="form-nueva-reserva" novalidate>
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <label class="field {% if form_errors.get('servicio_id') %}has-error{% endif %}" data-field="servicio_id">
+                <span class="field-label">Servicio</span>
+                <select name="servicio_id" required>
+                    <option value="">Selecciona un servicio</option>
+                    {% for s in servicios %}
+                        <option value="{{ s.id }}" data-duracion="{{ s.duracion_min }}" {% if form_values.get('servicio_id')|int == s.id %}selected{% endif %}>{{ s.nombre }}</option>
+                    {% endfor %}
+                </select>
+                <span class="field-error" data-error-for="servicio_id">{{ form_errors.get('servicio_id', '') }}</span>
+            </label>
+            <label class="field {% if form_errors.get('fecha') %}has-error{% endif %}" data-field="fecha">
+                <span class="field-label">Fecha</span>
+                <input type="date" name="fecha" value="{{ form_values.get('fecha') or fecha.isoformat() }}" min="{{ hoy.isoformat() }}" required>
+                <span class="field-error" data-error-for="fecha">{{ form_errors.get('fecha', '') }}</span>
+            </label>
+            <label class="field {% if form_errors.get('hora') %}has-error{% endif %}" data-field="hora">
+                <span class="field-label">Hora disponible</span>
+                <select name="hora" id="select-hora" data-selected-hora="{{ form_values.get('hora', '') }}" required>
+                    <option value="">Elige servicio y fecha</option>
+                </select>
+                <span class="field-error" data-error-for="hora">{{ form_errors.get('hora', '') }}</span>
+            </label>
+            <label class="field field-autocomplete {% if form_errors.get('nombre') %}has-error{% endif %}" data-field="nombre">
+                <span class="field-label">Nombre del cliente</span>
+                <input type="text" name="nombre" maxlength="100" value="{{ form_values.get('nombre', '') }}" autocomplete="off" required>
+                <div class="client-suggestions" data-client-suggestions-for="nombre" hidden></div>
+                <span class="field-error" data-error-for="nombre">{{ form_errors.get('nombre', '') }}</span>
+            </label>
+            <label class="field field-autocomplete {% if form_errors.get('telefono') %}has-error{% endif %}" data-field="telefono">
+                <span class="field-label">Teléfono</span>
+                <input type="tel" name="telefono" value="{{ form_values.get('telefono', '') }}" autocomplete="off" inputmode="tel" maxlength="15" pattern="[0-9+\-\s]{9,15}" required>
+                <div class="client-suggestions" data-client-suggestions-for="telefono" hidden></div>
+                <span class="field-error" data-error-for="telefono">{{ form_errors.get('telefono', '') }}</span>
+            </label>
+        </form>
+        <footer class="modal-footer">
+            <button type="button" class="btn btn-ghost" data-close-modal>Cancelar</button>
+            <button type="submit" form="form-nueva-reserva" class="btn btn-primary">Crear reserva</button>
+        </footer>
+    </div>
+</div>
+
+<!-- Modal cancelar reserva -->
+<div class="modal" id="modal-cancelar-reserva" hidden>
+    <div class="modal-backdrop" data-close-modal></div>
+    <div class="modal-card modal-card-sm">
+        <header class="modal-header">
+            <h3>Cancelar reserva</h3>
+            <button type="button" class="modal-close" data-close-modal aria-label="Cerrar">×</button>
+        </header>
+        <div class="modal-body">
+            <div class="modal-warning">
+                <div>
+                    <p class="modal-warning-title">¿Estás seguro de que quieres cancelar la reserva?</p>
+                </div>
+            </div>
+        </div>
+        <footer class="modal-footer modal-footer-between">
+            <button type="button" class="btn btn-ghost" data-close-modal>No, cancelar</button>
+            <form method="POST" action="" id="form-cancelar-reserva" class="inline-form">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="hidden" name="fecha" id="cancel-fecha" value="{{ fecha.isoformat() }}">
+                <button type="submit" class="btn btn-soft-danger">Confirmar</button>
+            </form>
+        </footer>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function() {
+    const form = document.querySelector('#form-nueva-reserva');
+    const sel = document.querySelector('#form-nueva-reserva select[name="servicio_id"]');
+    const fec = document.querySelector('#form-nueva-reserva input[name="fecha"]');
+    const horas = document.querySelector('#select-hora');
+    const nombreInput = form && form.querySelector('input[name="nombre"]');
+    const telefonoInput = form && form.querySelector('input[name="telefono"]');
+    const todayIso = '{{ hoy.isoformat() }}';
+    const clienteSearchUrl = "{{ url_for('panel.buscar_clientes_reserva') }}";
+    const clienteSearchTimers = {};
+
+    function escapeHtml(value) {
+        return String(value).replace(/[&<>'"]/g, function(char) {
+            return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' })[char];
+        });
+    }
+
+    function setFieldError(name, message) {
+        const field = form && form.querySelector(`[data-field="${name}"]`);
+        const error = form && form.querySelector(`[data-error-for="${name}"]`);
+        if (field) field.classList.toggle('has-error', Boolean(message));
+        if (error) error.textContent = message || '';
+    }
+
+    function clearFieldError(name) {
+        setFieldError(name, '');
+    }
+
+    function normalizeSpanishPhoneDigits(digits) {
+        let clean = String(digits || '');
+        if (clean.startsWith('00')) clean = clean.slice(2);
+        if (clean.startsWith('34') && clean.length === 11) clean = clean.slice(2);
+        return clean;
+    }
+
+    function validateForm() {
+        if (!form) return true;
+        let valid = true;
+        const nombre = form.querySelector('input[name="nombre"]');
+        const telefono = form.querySelector('input[name="telefono"]');
+
+        ['servicio_id', 'fecha', 'hora', 'nombre', 'telefono'].forEach(clearFieldError);
+
+        if (!sel.value) {
+            setFieldError('servicio_id', 'Selecciona un servicio.');
+            valid = false;
+        }
+        if (!fec.value) {
+            setFieldError('fecha', 'Selecciona una fecha válida.');
+            valid = false;
+        } else if (fec.value < todayIso) {
+            setFieldError('fecha', 'La fecha no puede ser anterior a hoy.');
+            valid = false;
+        }
+        if (!horas.value) {
+            setFieldError('hora', 'Selecciona una hora disponible.');
+            valid = false;
+        }
+        if (!nombre.value.trim() || nombre.value.trim().length < 2) {
+            setFieldError('nombre', 'Indica el nombre del cliente.');
+            valid = false;
+        }
+
+        const phoneValue = telefono.value.trim();
+        const digits = phoneValue.replace(/\D+/g, '');
+        if (!/^[0-9+\-\s]{9,30}$/.test(phoneValue) || !/^[6789]\d{8}$/.test(normalizeSpanishPhoneDigits(digits))) {
+            setFieldError('telefono', 'El teléfono debe tener 9 cifras.');
+            valid = false;
+        }
+
+        return valid;
+    }
+
+    async function refrescar() {
+        if (!sel.value || !fec.value) return;
+        clearFieldError('hora');
+        horas.innerHTML = '<option value="">…</option>';
+        try {
+            const res = await fetch(`{{ url_for('panel.horas_disponibles') }}?servicio_id=${encodeURIComponent(sel.value)}&fecha=${encodeURIComponent(fec.value)}`);
+            const data = await res.json();
+            const selectedHour = horas.dataset.selectedHora || '';
+            if (data.closed) {
+                horas.innerHTML = '<option value="">Día cerrado</option>';
+                setFieldError('hora', 'No hay horas disponibles porque ese día está cerrado.');
+                return;
+            }
+            if (!data.horas || !data.horas.length) {
+                horas.innerHTML = '<option value="">Sin huecos disponibles</option>';
+                setFieldError('hora', 'No hay horas disponibles para esa fecha.');
+                return;
+            }
+
+            horas.innerHTML = data.horas.map(function(h) {
+                const safe = escapeHtml(h);
+                const selected = h === selectedHour ? ' selected' : '';
+                return `<option value="${safe}"${selected}>${safe}</option>`;
+            }).join('');
+            if (selectedHour && !data.horas.includes(selectedHour)) {
+                const safe = escapeHtml(selectedHour);
+                horas.insertAdjacentHTML('afterbegin', `<option value="" selected>${safe} · no disponible</option>`);
+            }
+            horas.dataset.selectedHora = '';
+        } catch (err) {
+            horas.innerHTML = '<option value="">Error al cargar</option>';
+            setFieldError('hora', 'No se pudieron obtener las horas.');
+        }
+    }
+
+    function getSuggestionsBox(field) {
+        return form && form.querySelector(`[data-client-suggestions-for="${field}"]`);
+    }
+
+    function hideClientSuggestions(field) {
+        const box = getSuggestionsBox(field);
+        if (!box) return;
+        box.hidden = true;
+        box.innerHTML = '';
+    }
+
+    function hideAllClientSuggestions() {
+        hideClientSuggestions('nombre');
+        hideClientSuggestions('telefono');
+    }
+
+    function selectClient(cliente) {
+        if (nombreInput) nombreInput.value = cliente.nombre || '';
+        if (telefonoInput) telefonoInput.value = cliente.telefono || '';
+        clearFieldError('nombre');
+        clearFieldError('telefono');
+        hideAllClientSuggestions();
+    }
+
+    function renderClientSuggestions(field, clientes, query) {
+        const box = getSuggestionsBox(field);
+        if (!box) return;
+
+        if (!query || query.trim().length < 2) {
+            hideClientSuggestions(field);
+            return;
+        }
+
+        if (!clientes.length) {
+            box.innerHTML = '<div class="client-suggestion-empty">Sin coincidencias. Se creará como cliente nuevo.</div>';
+            box.hidden = false;
+            return;
+        }
+
+        box.innerHTML = clientes.map(function(cliente) {
+            return `
+                <button type="button" class="client-suggestion-item" data-client-id="${cliente.id}">
+                    <span class="client-suggestion-name">${escapeHtml(cliente.nombre)}</span>
+                    <span class="client-suggestion-phone">${escapeHtml(cliente.telefono)}</span>
+                </button>`;
+        }).join('');
+
+        box.querySelectorAll('[data-client-id]').forEach(function(btn) {
+            btn.addEventListener('click', function() {
+                const selected = clientes.find(function(cliente) {
+                    return String(cliente.id) === String(btn.dataset.clientId);
+                });
+                if (selected) selectClient(selected);
+            });
+        });
+        box.hidden = false;
+    }
+
+    function scheduleClientSearch(field, value) {
+        window.clearTimeout(clienteSearchTimers[field]);
+        if (!value || value.trim().length < 2) {
+            hideClientSuggestions(field);
+            return;
+        }
+
+        clienteSearchTimers[field] = window.setTimeout(async function() {
+            try {
+                const params = new URLSearchParams({ q: value.trim(), field: field });
+                const res = await fetch(`${clienteSearchUrl}?${params.toString()}`);
+                const data = await res.json();
+                const currentInput = field === 'nombre' ? nombreInput : telefonoInput;
+                if (!currentInput || currentInput.value.trim() !== value.trim()) return;
+                renderClientSuggestions(field, data.clientes || [], value);
+            } catch (err) {
+                hideClientSuggestions(field);
+            }
+        }, 180);
+    }
+
+    sel && sel.addEventListener('change', function() {
+        clearFieldError('servicio_id');
+        refrescar();
+    });
+    fec && fec.addEventListener('change', function() {
+        clearFieldError('fecha');
+        refrescar();
+    });
+    horas && horas.addEventListener('change', function() { clearFieldError('hora'); });
+
+    if (form) {
+        form.querySelectorAll('input[name="nombre"], input[name="telefono"]').forEach(function(input) {
+            input.addEventListener('input', function() {
+                clearFieldError(input.name);
+                scheduleClientSearch(input.name, input.value);
+            });
+            input.addEventListener('focus', function() {
+                scheduleClientSearch(input.name, input.value);
+            });
+        });
+        document.addEventListener('click', function(e) {
+            if (!e.target.closest('.field-autocomplete')) hideAllClientSuggestions();
+        });
+        form.addEventListener('submit', function(e) {
+            hideAllClientSuggestions();
+            if (!validateForm()) e.preventDefault();
+        });
+    }
+
+    document.querySelectorAll('[data-open-cancel-modal]').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            const modal = document.getElementById('modal-cancelar-reserva');
+            const cancelForm = document.getElementById('form-cancelar-reserva');
+            const fechaInput = document.getElementById('cancel-fecha');
+            if (!modal || !cancelForm || !fechaInput) return;
+
+            cancelForm.action = btn.dataset.action || '';
+            fechaInput.value = btn.dataset.fecha || '{{ fecha.isoformat() }}';
+            modal.hidden = false;
+        });
+    });
+
+    if (sel && sel.value && fec && fec.value) {
+        refrescar();
+    }
+
+    // Si la URL trae #nueva o hay errores, abrir modal automáticamente.
+    const nuevaReservaModal = document.getElementById('modal-nueva-reserva');
+    const abrirModalNuevaReserva = nuevaReservaModal && nuevaReservaModal.dataset.openOnLoad === 'true';
+    if (nuevaReservaModal && (window.location.hash === '#nueva' || abrirModalNuevaReserva)) {
+        nuevaReservaModal.hidden = false;
+    }
+})();
+</script>
+{% endblock %}

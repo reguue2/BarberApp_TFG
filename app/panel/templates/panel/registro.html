@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Registrarse · PeluGestor</title>
+    <link rel="stylesheet" href="{{ url_for('panel.static', filename='css/panel.css') }}">
+</head>
+<body class="auth-body">
+    <div class="auth-card">
+        <div class="auth-logo">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/>
+                <path d="M20 4L8.12 15.88M14.47 14.48L20 20M8.12 8.12L12 12"/>
+            </svg>
+        </div>
+        <h1 class="auth-title">Registrarse</h1>
+        <p class="auth-subtitle">Registra tu peluquería y accede al panel</p>
+
+        <form method="POST" action="{{ url_for('auth.registro') }}" class="auth-form" novalidate>
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <label class="field {% if errors.nombre_peluqueria %}has-error{% endif %}">
+                <span class="field-label">Nombre de la peluquería</span>
+                <input type="text" name="nombre_peluqueria" placeholder="Escribe el nombre de tu peluquería..." value="{{ form.nombre_peluqueria or '' }}" maxlength="100" required autofocus>
+                {% if errors.nombre_peluqueria %}<span class="field-error">{{ errors.nombre_peluqueria }}</span>{% endif %}
+            </label>
+            <label class="field {% if errors.nombre %}has-error{% endif %}">
+                <span class="field-label">Nombre del administrador</span>
+                <input type="text" name="nombre" placeholder="Escribe tu nombre..." value="{{ form.nombre or '' }}" maxlength="100" required>
+                {% if errors.nombre %}<span class="field-error">{{ errors.nombre }}</span>{% endif %}
+            </label>
+            <label class="field {% if errors.email %}has-error{% endif %}">
+                <span class="field-label">Email</span>
+                <input type="email" name="email" placeholder="email@ejemplo.com" value="{{ form.email or '' }}" required>
+                {% if errors.email %}<span class="field-error">{{ errors.email }}</span>{% endif %}
+            </label>
+            <label class="field {% if errors.password %}has-error{% endif %}">
+                <span class="field-label">Contraseña</span>
+                <input type="password" name="password" placeholder="Escribe la contraseña..." required>
+                {% if errors.password %}<span class="field-error">{{ errors.password }}</span>{% endif %}
+            </label>
+            <label class="field {% if errors.password_confirm %}has-error{% endif %}">
+                <span class="field-label">Repetir contraseña</span>
+                <input type="password" name="password_confirm" placeholder="Escribe la contraseña de nuevo..." required>
+                {% if errors.password_confirm %}<span class="field-error">{{ errors.password_confirm }}</span>{% endif %}
+            </label>
+            <button type="submit" class="btn btn-primary btn-block">Registrarse</button>
+        </form>
+
+        <p class="auth-switch">
+            ¿Ya tienes cuenta?
+            <a href="{{ url_for('auth.login') }}">Iniciar sesión</a>
+        </p>
+    </div>
+</body>
+</html>

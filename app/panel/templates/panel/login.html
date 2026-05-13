@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Iniciar sesión · PeluGestor</title>
+    <link rel="stylesheet" href="{{ url_for('panel.static', filename='css/panel.css') }}">
+</head>
+<body class="auth-body">
+    <div class="auth-card">
+        <div class="auth-logo">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/>
+                <path d="M20 4L8.12 15.88M14.47 14.48L20 20M8.12 8.12L12 12"/>
+            </svg>
+        </div>
+        <h1 class="auth-title">PeluGestor</h1>
+        <p class="auth-subtitle">Panel de gestión para peluquerías</p>
+
+        <form method="POST" action="{{ url_for('auth.login') }}" class="auth-form" novalidate>
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <label class="field {% if errors.email %}has-error{% endif %}">
+                <span class="field-label">Email</span>
+                <input type="email" name="email" placeholder="email@ejemplo.com" value="{{ email or '' }}" required autofocus>
+                {% if errors.email %}<span class="field-error">{{ errors.email }}</span>{% endif %}
+            </label>
+            <label class="field {% if errors.password %}has-error{% endif %}">
+                <span class="field-label">Contraseña</span>
+                <input type="password" name="password" placeholder="••••••••" required>
+                {% if errors.password %}<span class="field-error">{{ errors.password }}</span>{% endif %}
+            </label>
+            <button type="submit" class="btn btn-primary btn-block">Iniciar sesión</button>
+        </form>
+
+        <p class="auth-switch">
+            ¿No tienes cuenta?
+            <a href="{{ url_for('auth.registro') }}">Registrarse</a>
+        </p>
+    </div>
+</body>
+</html>

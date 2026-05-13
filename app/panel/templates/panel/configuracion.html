@@ -1,0 +1,132 @@
+{% extends "panel/base.html" %}
+{% block title %}Configuración{% endblock %}
+{% block page_title %}Configuración{% endblock %}
+
+{% set errors = errors or {} %}
+{% set form_data = form_data or {} %}
+{% set negocio_errors = errors.get('negocio', {}) %}
+{% set cuenta_errors = errors.get('cuenta', {}) %}
+{% set reservas_errors = errors.get('reservas', {}) %}
+{% set whatsapp_errors = errors.get('whatsapp', {}) %}
+{% set negocio = form_data.get('negocio', {}) %}
+{% set cuenta = form_data.get('cuenta', {}) %}
+{% set reservas_form = form_data.get('reservas', {}) %}
+{% set whatsapp = form_data.get('whatsapp', {}) %}
+{% set telefono_default = peluqueria.telefono_peluqueria|phone_local if peluqueria.telefono_peluqueria else '' %}
+{% set rango_default = peluqueria.rango_reservas_min|string %}
+
+{% block content %}
+<div class="config-form">
+    <form method="POST" action="{{ url_for('panel.configuracion_guardar_negocio') }}" class="card config-section" novalidate>
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="card-header">
+            <h2><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 21h18M5 21V7l7-4 7 4v14M9 21v-6h6v6"/></svg> Datos del negocio</h2>
+        </div>
+        <label class="field {% if negocio_errors.get('nombre') %}has-error{% endif %}" data-field="nombre">
+            <span class="field-label">Nombre de la peluquería</span>
+            <input type="text" name="nombre" value="{{ negocio.get('nombre', peluqueria.nombre) }}" maxlength="100" autocomplete="off">
+            <span class="field-error">{{ negocio_errors.get('nombre', '') }}</span>
+        </label>
+        <label class="field {% if negocio_errors.get('direccion') %}has-error{% endif %}" data-field="direccion">
+            <span class="field-label">Dirección</span>
+            <input type="text" name="direccion" value="{{ negocio.get('direccion', peluqueria.direccion or '') }}" maxlength="150" placeholder="Dirección completa" autocomplete="off">
+            <span class="field-error">{{ negocio_errors.get('direccion', '') }}</span>
+        </label>
+        <label class="field {% if negocio_errors.get('telefono_peluqueria') %}has-error{% endif %}" data-field="telefono_peluqueria">
+            <span class="field-label">Teléfono</span>
+            <input type="text" name="telefono_peluqueria" value="{{ negocio.get('telefono_peluqueria', telefono_default) }}" maxlength="15" inputmode="tel" placeholder="600 000 000" autocomplete="off">
+            <span class="field-error">{{ negocio_errors.get('telefono_peluqueria', '') }}</span>
+        </label>
+        <label class="field {% if negocio_errors.get('info') %}has-error{% endif %}" data-field="info">
+            <span class="field-label">Información general</span>
+            <textarea name="info" rows="3" maxlength="500" class="textarea-fixed" placeholder="Descripción del negocio, información adicional…">{{ negocio.get('info', peluqueria.info or '') }}</textarea>
+            <span class="field-error">{{ negocio_errors.get('info', '') }}</span>
+        </label>
+        <div class="config-actions">
+            <button type="submit" class="btn btn-primary">Guardar datos del negocio</button>
+        </div>
+    </form>
+
+    <form method="POST" action="{{ url_for('panel.configuracion_guardar_cuenta') }}" class="card config-section" novalidate>
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="card-header">
+            <h2><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg> Datos de la cuenta</h2>
+        </div>
+        <div class="field-row">
+            <label class="field {% if cuenta_errors.get('usuario_nombre') %}has-error{% endif %}" data-field="usuario_nombre">
+                <span class="field-label">Nombre del administrador</span>
+                <input type="text" name="usuario_nombre" value="{{ cuenta.get('usuario_nombre', current_user.nombre) }}" maxlength="100" autocomplete="off">
+                <span class="field-error">{{ cuenta_errors.get('usuario_nombre', '') }}</span>
+            </label>
+            <label class="field {% if cuenta_errors.get('email') %}has-error{% endif %}" data-field="email">
+                <span class="field-label">Email de acceso</span>
+                <input type="email" name="email" value="{{ cuenta.get('email', current_user.email) }}" maxlength="150" autocomplete="off">
+                <span class="field-error">{{ cuenta_errors.get('email', '') }}</span>
+            </label>
+        </div>
+        <div class="field-row">
+            <label class="field {% if cuenta_errors.get('current_password') %}has-error{% endif %}" data-field="current_password">
+                <span class="field-label">Contraseña actual</span>
+                <input type="password" name="current_password" autocomplete="current-password">
+                <span class="field-error">{{ cuenta_errors.get('current_password', '') }}</span>
+            </label>
+            <label class="field {% if cuenta_errors.get('new_password') %}has-error{% endif %}" data-field="new_password">
+                <span class="field-label">Nueva contraseña</span>
+                <input type="password" name="new_password" autocomplete="new-password">
+                <span class="field-error">{{ cuenta_errors.get('new_password', '') }}</span>
+            </label>
+        </div>
+        <label class="field {% if cuenta_errors.get('new_password_confirm') %}has-error{% endif %}" data-field="new_password_confirm">
+            <span class="field-label">Repetir nueva contraseña</span>
+            <input type="password" name="new_password_confirm" autocomplete="new-password">
+            <span class="field-error">{{ cuenta_errors.get('new_password_confirm', '') }}</span>
+        </label>
+        <div class="config-actions">
+            <button type="submit" class="btn btn-primary">Guardar datos de la cuenta</button>
+        </div>
+    </form>
+
+    <form method="POST" action="{{ url_for('panel.configuracion_guardar_reservas') }}" class="card config-section" novalidate>
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="card-header">
+            <h2><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 11-4 0v-.09a1.65 1.65 0 00-1-1.51 1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09a1.65 1.65 0 001.51-1 1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06a1.65 1.65 0 001.82.33 1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06a1.65 1.65 0 00-.33 1.82 1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg> Parámetros de reservas</h2>
+        </div>
+        <label class="field {% if reservas_errors.get('rango_reservas_min') %}has-error{% endif %}" data-field="rango_reservas_min">
+            <span class="field-label">Rango de reservas (minutos)</span>
+            <select name="rango_reservas_min">
+                {% set selected_rango = reservas_form.get('rango_reservas_min', rango_default) %}
+                {% for opt in [15, 20, 30, 45, 60, 90] %}
+                    <option value="{{ opt }}" {% if selected_rango|string == opt|string %}selected{% endif %}>{{ opt }} minutos</option>
+                {% endfor %}
+            </select>
+            <span class="field-hint">Intervalo mínimo entre reservas consecutivas.</span>
+            <span class="field-error">{{ reservas_errors.get('rango_reservas_min', '') }}</span>
+        </label>
+        <div class="config-actions">
+            <button type="submit" class="btn btn-primary">Guardar parámetros</button>
+        </div>
+    </form>
+
+    <form method="POST" action="{{ url_for('panel.configuracion_guardar_whatsapp') }}" class="card config-section" novalidate>
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="card-header">
+            <h2><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg> Configuración de WhatsApp Business</h2>
+        </div>
+        <label class="field {% if whatsapp_errors.get('wa_phone_number_id') %}has-error{% endif %}" data-field="wa_phone_number_id">
+            <span class="field-label">WhatsApp Phone Number ID</span>
+            <input type="text" name="wa_phone_number_id" value="{{ whatsapp.get('wa_phone_number_id', peluqueria.wa_phone_number_id or '') }}" maxlength="64" placeholder="ID del número de teléfono" autocomplete="off">
+            <span class="field-hint">ID del número de WhatsApp Business configurado en Meta.</span>
+            <span class="field-error">{{ whatsapp_errors.get('wa_phone_number_id', '') }}</span>
+        </label>
+        <label class="field {% if whatsapp_errors.get('wa_business_id') %}has-error{% endif %}" data-field="wa_business_id">
+            <span class="field-label">WhatsApp Business Account ID</span>
+            <input type="text" name="wa_business_id" value="{{ whatsapp.get('wa_business_id', peluqueria.wa_business_id or '') }}" maxlength="64" placeholder="ID de la cuenta de negocio" autocomplete="off">
+            <span class="field-hint">ID de la cuenta de WhatsApp Business en Meta.</span>
+            <span class="field-error">{{ whatsapp_errors.get('wa_business_id', '') }}</span>
+        </label>
+        <div class="config-actions">
+            <button type="submit" class="btn btn-primary">Guardar WhatsApp</button>
+        </div>
+    </form>
+</div>
+{% endblock %}

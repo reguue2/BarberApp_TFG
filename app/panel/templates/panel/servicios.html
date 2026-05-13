@@ -1,0 +1,391 @@
+{% extends "panel/base.html" %}
+{% block title %}Servicios{% endblock %}
+{% block page_title %}Servicios{% endblock %}
+
+{% block content %}
+<div class="list-toolbar">
+    <form method="GET" class="search-form" id="servicios-search-form">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+        <input type="search" name="q" value="{{ search }}" placeholder="Buscar servicio por nombre…" autocomplete="off" id="servicios-search-input">
+    </form>
+    <button type="button" class="btn btn-primary" data-open-modal="modal-nuevo-servicio" id="btn-nuevo-servicio">+ Nuevo servicio</button>
+</div>
+
+<section class="cards-grid" id="servicios-list-wrapper">
+    {% for s in servicios %}
+        <article class="card item-card {% if not s.activo %}is-inactive{% endif %}">
+            <div class="item-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M20 4L8.12 15.88M14.47 14.48L20 20M8.12 8.12L12 12"/></svg>
+            </div>
+            <h3 class="item-name">{{ s.nombre }}</h3>
+            <p class="item-desc">{{ s.descripcion or 'Sin descripción' }}</p>
+            <div class="item-meta">
+                <span>€ {{ '%.2f'|format(s.precio|float) }}</span>
+                <span>⏱ {{ s.duracion_min }} minutos</span>
+            </div>
+            <div class="item-actions">
+                <button type="button" class="btn btn-outline btn-block"
+                    data-edit-servicio
+                    data-id="{{ s.id }}"
+                    data-nombre="{{ s.nombre }}"
+                    data-descripcion="{{ s.descripcion or '' }}"
+                    data-precio="{{ '%.2f'|format(s.precio|float) }}"
+                    data-duracion="{{ s.duracion_min }}">Editar servicio</button>
+                <form method="POST" action="{{ url_for('panel.servicio_toggle', servicio_id=s.id) }}" class="inline-form">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button type="submit" class="btn btn-soft-danger btn-block">{{ 'Desactivar' if s.activo else 'Activar' }}</button>
+                </form>
+                <button type="button"
+                        class="btn btn-soft-danger btn-block"
+                        data-open-delete-service-modal
+                        data-action="{{ url_for('panel.servicio_eliminar', servicio_id=s.id) }}"
+                        data-servicio="{{ s.nombre }}">
+                    Eliminar
+                </button>
+            </div>
+        </article>
+    {% else %}
+        <div class="empty"><p>No hay servicios. Crea el primero.</p></div>
+    {% endfor %}
+</section>
+
+<!-- Modal crear/editar servicio -->
+<div class="modal" id="modal-nuevo-servicio" hidden>
+    <div class="modal-backdrop" data-close-modal></div>
+    <div class="modal-card">
+        <header class="modal-header">
+            <h3 id="servicio-modal-title">Nuevo servicio</h3>
+            <button type="button" class="modal-close" data-close-modal aria-label="Cerrar">×</button>
+        </header>
+        <form method="POST" id="form-servicio" action="{{ url_for('panel.servicio_nuevo') }}" class="modal-body" novalidate>
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <label class="field" data-field="nombre">
+                <span class="field-label">Nombre</span>
+                <input type="text" name="nombre" maxlength="120" autocomplete="off">
+                <span class="field-error" data-error-for="nombre"></span>
+            </label>
+            <label class="field" data-field="descripcion">
+                <span class="field-label">Descripción</span>
+                <textarea name="descripcion" rows="2" maxlength="255" class="textarea-fixed"></textarea>
+                <span class="field-error" data-error-for="descripcion"></span>
+            </label>
+            <div class="field-row">
+                <label class="field" data-field="precio">
+                    <span class="field-label">Precio (€)</span>
+                    <input type="text" name="precio" inputmode="decimal" maxlength="9" autocomplete="off" data-decimal-input>
+                    <span class="field-error" data-error-for="precio"></span>
+                </label>
+                <label class="field" data-field="duracion_min">
+                    <span class="field-label">Duración (min)</span>
+                    <input type="text" name="duracion_min" inputmode="numeric" maxlength="3" autocomplete="off" data-integer-input>
+                    <span class="field-error" data-error-for="duracion_min"></span>
+                </label>
+            </div>
+        </form>
+        <footer class="modal-footer">
+            <button type="button" class="btn btn-ghost" data-close-modal>Cancelar</button>
+            <button type="submit" form="form-servicio" class="btn btn-primary">Guardar</button>
+        </footer>
+    </div>
+</div>
+
+<!-- Modal eliminar servicio -->
+<div class="modal" id="modal-eliminar-servicio" hidden>
+    <div class="modal-backdrop" data-close-modal></div>
+    <div class="modal-card modal-card-sm">
+        <header class="modal-header">
+            <h3>Eliminar servicio</h3>
+            <button type="button" class="modal-close" data-close-modal aria-label="Cerrar">×</button>
+        </header>
+        <div class="modal-body">
+            <div class="modal-warning">
+                <div>
+                    <p class="modal-warning-title">¿Estás seguro de que quieres eliminar este servicio?</p>
+                    <p class="modal-warning-text" id="delete-service-warning-text">Esta acción no se puede deshacer.</p>
+                </div>
+            </div>
+        </div>
+        <footer class="modal-footer modal-footer-between">
+            <button type="button" class="btn btn-ghost" data-close-modal>No, cancelar</button>
+            <form method="POST" action="" id="form-eliminar-servicio" class="inline-form">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="btn btn-soft-danger">Confirmar</button>
+            </form>
+        </footer>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function() {
+    const form = document.getElementById('form-servicio');
+    const title = document.getElementById('servicio-modal-title');
+    const baseAction = "{{ url_for('panel.servicio_nuevo') }}";
+    const modal = document.getElementById('modal-nuevo-servicio');
+    const listWrapper = document.getElementById('servicios-list-wrapper');
+    const searchForm = document.getElementById('servicios-search-form');
+    const searchInput = document.getElementById('servicios-search-input');
+    const csrfToken = "{{ csrf_token() }}";
+    let searchTimer = null;
+    let searchController = null;
+
+    function openCreate() {
+        form.reset();
+        clearFormErrors();
+        form.action = baseAction;
+        title.textContent = 'Nuevo servicio';
+    }
+
+    document.getElementById('btn-nuevo-servicio').addEventListener('click', openCreate);
+
+    document.addEventListener('click', (event) => {
+        const btn = event.target.closest('[data-edit-servicio]');
+        if (!btn) return;
+
+        form.reset();
+        clearFormErrors();
+        form.nombre.value = btn.dataset.nombre || '';
+        form.descripcion.value = btn.dataset.descripcion || '';
+        form.precio.value = btn.dataset.precio || '';
+        form.duracion_min.value = btn.dataset.duracion || '';
+        form.action = `/panel/servicios/${btn.dataset.id}/editar`;
+        title.textContent = 'Editar servicio';
+        modal.hidden = false;
+    });
+
+    document.addEventListener('click', (event) => {
+        const btn = event.target.closest('[data-open-delete-service-modal]');
+        if (!btn) return;
+
+        const deleteModal = document.getElementById('modal-eliminar-servicio');
+        const deleteForm = document.getElementById('form-eliminar-servicio');
+        const warningText = document.getElementById('delete-service-warning-text');
+        if (!deleteModal || !deleteForm) return;
+
+        deleteForm.action = btn.dataset.action || '';
+        if (warningText) {
+            const servicio = btn.dataset.servicio || 'este servicio';
+            warningText.textContent = `Vas a eliminar ${servicio}. Esta acción no se puede deshacer.`;
+        }
+        deleteModal.hidden = false;
+    });
+
+    if (searchInput) {
+        searchInput.addEventListener('input', () => {
+            clearTimeout(searchTimer);
+            searchTimer = setTimeout(runLiveSearch, 180);
+        });
+    }
+
+    if (searchForm) {
+        searchForm.addEventListener('submit', (event) => {
+            event.preventDefault();
+            runLiveSearch();
+        });
+    }
+
+    if (form) {
+        form.addEventListener('submit', async (event) => {
+            event.preventDefault();
+            clearFormErrors();
+
+            const clientErrors = validateServicio(form);
+            if (Object.keys(clientErrors).length > 0) {
+                showFormErrors(clientErrors);
+                return;
+            }
+
+            const submitButton = document.querySelector(`[form="${form.id}"][type="submit"]`);
+            if (submitButton) submitButton.disabled = true;
+
+            try {
+                const res = await fetch(form.action, {
+                    method: 'POST',
+                    body: new FormData(form),
+                    headers: { 'X-Requested-With': 'XMLHttpRequest' },
+                });
+                const data = await res.json();
+                if (!res.ok || !data.ok) {
+                    showFormErrors(data.errors || { general: 'No se pudo guardar el servicio.' });
+                    return;
+                }
+                form.reset();
+                modal.hidden = true;
+                await runLiveSearch();
+            } catch (err) {
+                showFormErrors({ general: 'No se pudo guardar el servicio.' });
+            } finally {
+                if (submitButton) submitButton.disabled = false;
+            }
+        });
+    }
+
+    document.querySelectorAll('[data-integer-input]').forEach(input => {
+        input.addEventListener('input', () => {
+            input.value = input.value.replace(/\D/g, '');
+            clearFieldError(input.name);
+        });
+    });
+
+    document.querySelectorAll('[data-decimal-input]').forEach(input => {
+        input.addEventListener('input', () => {
+            input.value = normalizeDecimalText(input.value);
+            clearFieldError(input.name);
+        });
+    });
+
+    form.querySelectorAll('input[name="nombre"], textarea[name="descripcion"]').forEach(input => {
+        input.addEventListener('input', () => clearFieldError(input.name));
+    });
+
+    async function runLiveSearch() {
+        const query = searchInput ? searchInput.value.trim() : '';
+        const url = new URL('{{ url_for("panel.servicios") }}', window.location.origin);
+        if (query) url.searchParams.set('q', query);
+        url.searchParams.set('ajax', '1');
+
+        if (searchController) searchController.abort();
+        searchController = new AbortController();
+
+        try {
+            const res = await fetch(url.toString(), {
+                headers: { 'Accept': 'application/json' },
+                signal: searchController.signal,
+            });
+            if (!res.ok) throw new Error('not_ok');
+            const data = await res.json();
+            listWrapper.innerHTML = renderServicios(data.servicios || [], query);
+            updateSearchUrl(query);
+        } catch (err) {
+            if (err.name !== 'AbortError') {
+                listWrapper.innerHTML = '<div class="empty"><p>No se pudo cargar la búsqueda.</p></div>';
+            }
+        }
+    }
+
+    function renderServicios(servicios, query) {
+        if (!servicios.length) {
+            const message = query ? 'No hay servicios que coincidan con la búsqueda.' : 'No hay servicios. Crea el primero.';
+            return `<div class="empty"><p>${message}</p></div>`;
+        }
+
+        return servicios.map(s => `
+            <article class="card item-card ${s.activo ? '' : 'is-inactive'}">
+                <div class="item-icon">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M20 4L8.12 15.88M14.47 14.48L20 20M8.12 8.12L12 12"/></svg>
+                </div>
+                <h3 class="item-name">${escape(s.nombre)}</h3>
+                <p class="item-desc">${escape(s.descripcion_view)}</p>
+                <div class="item-meta">
+                    <span>€ ${escape(s.precio)}</span>
+                    <span>⏱ ${s.duracion_min} minutos</span>
+                </div>
+                <div class="item-actions">
+                    <button type="button" class="btn btn-outline btn-block"
+                        data-edit-servicio
+                        data-id="${s.id}"
+                        data-nombre="${escapeAttr(s.nombre)}"
+                        data-descripcion="${escapeAttr(s.descripcion)}"
+                        data-precio="${escapeAttr(s.precio)}"
+                        data-duracion="${s.duracion_min}">Editar servicio</button>
+                    <form method="POST" action="/panel/servicios/${s.id}/toggle" class="inline-form">
+                        <input type="hidden" name="csrf_token" value="${escapeAttr(csrfToken)}">
+                        <button type="submit" class="btn btn-soft-danger btn-block">${s.activo ? 'Desactivar' : 'Activar'}</button>
+                    </form>
+                    <button type="button"
+                            class="btn btn-ghost btn-block"
+                            data-open-delete-service-modal
+                            data-action="/panel/servicios/${s.id}/eliminar"
+                            data-servicio="${escapeAttr(s.nombre)}">
+                        Eliminar
+                    </button>
+                </div>
+            </article>
+        `).join('');
+    }
+
+    function validateServicio(form) {
+        const errors = {};
+        const nombre = (form.nombre.value || '').trim();
+        const precio = (form.precio.value || '').trim().replace(',', '.');
+        const duracion = (form.duracion_min.value || '').trim();
+
+        if (nombre.length < 2) {
+            errors.nombre = 'El nombre del servicio es obligatorio.';
+        }
+        if (!/^\d+(\.\d{1,2})?$/.test(precio)) {
+            errors.precio = 'El precio debe ser un número válido.';
+        } else if (Number(precio) < 0 || Number(precio) >= 1000000) {
+            errors.precio = 'El precio debe ser menor de 1000000.';
+        }
+        if (!/^\d+$/.test(duracion)) {
+            errors.duracion_min = 'La duración debe ser un número válido.';
+        } else {
+            const minutos = Number.parseInt(duracion, 10);
+            if (minutos < 5 || minutos > 600) {
+                errors.duracion_min = 'La duración debe estar entre 5 y 600 minutos.';
+            }
+        }
+        return errors;
+    }
+
+    function clearFormErrors() {
+        form.querySelectorAll('.field.has-error').forEach(field => field.classList.remove('has-error'));
+        form.querySelectorAll('.field-error').forEach(error => { error.textContent = ''; });
+        const general = form.querySelector('.form-error-general');
+        if (general) general.remove();
+    }
+
+    function clearFieldError(name) {
+        const field = form.querySelector(`[data-field="${name}"]`);
+        const error = form.querySelector(`[data-error-for="${name}"]`);
+        if (field) field.classList.remove('has-error');
+        if (error) error.textContent = '';
+    }
+
+    function showFormErrors(errors) {
+        clearFormErrors();
+        Object.entries(errors).forEach(([fieldName, message]) => {
+            if (fieldName === 'general') {
+                form.insertAdjacentHTML('afterbegin', `<p class="field-error form-error-general">${escape(message)}</p>`);
+                return;
+            }
+            const field = form.querySelector(`[data-field="${fieldName}"]`);
+            const error = form.querySelector(`[data-error-for="${fieldName}"]`);
+            if (field) field.classList.add('has-error');
+            if (error) error.textContent = message;
+        });
+    }
+
+    function normalizeDecimalText(value) {
+        const clean = String(value || '').replace(/[^0-9.,]/g, '').replace(',', '.');
+        const parts = clean.split('.');
+        if (parts.length === 1) return parts[0];
+        return `${parts[0]}.${parts.slice(1).join('').slice(0, 2)}`;
+    }
+
+    function updateSearchUrl(query) {
+        const url = new URL(window.location.href);
+        if (query) url.searchParams.set('q', query);
+        else url.searchParams.delete('q');
+        window.history.replaceState({}, '', url.toString());
+    }
+
+    function escape(s) {
+        return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({
+            '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+        }[c]));
+    }
+
+    function escapeAttr(s) {
+        return escape(s).replace(/`/g, '&#96;');
+    }
+
+    if (window.location.hash === '#nuevo') {
+        openCreate();
+        modal.hidden = false;
+    }
+})();
+</script>
+{% endblock %}

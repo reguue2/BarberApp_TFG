@@ -1,0 +1,392 @@
+{% extends "panel/base.html" %}
+{% block title %}Disponibilidad{% endblock %}
+{% block page_title %}Disponibilidad{% endblock %}
+
+{% set dia_iniciales = {1:'L', 2:'M', 3:'X', 4:'J', 5:'V', 6:'S', 7:'D'} %}
+
+{% block content %}
+<section class="card disponibilidad-card">
+    <div class="card-header">
+        <h2><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg> Horario semanal</h2>
+    </div>
+
+    <form method="POST" action="{{ url_for('panel.guardar_horarios') }}" id="form-horarios">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <ul class="schedule-list">
+            {% for dia_num, dia_nombre in dias_nombre.items() %}
+                {% set tramos = horarios_por_dia[dia_num] %}
+                <li class="schedule-row{% if not tramos %} is-closed{% endif %}" data-dia="{{ dia_num }}">
+                    <div class="schedule-day">
+                        <span class="schedule-day-tag" aria-hidden="true">{{ dia_iniciales[dia_num] }}</span>
+                        <span class="schedule-day-name">{{ dia_nombre }}</span>
+                    </div>
+                    <div class="schedule-tramos" data-tramos="{{ dia_num }}">
+                        {% if tramos %}
+                            {% for h in tramos %}
+                                {% set h_inicio = h.hora_inicio.strftime('%H:%M') %}
+                                {% set h_fin = h.hora_fin.strftime('%H:%M') %}
+                                <div class="tramo-row">
+                                    <input type="hidden" name="tramo_dia" value="{{ dia_num }}">
+                                    <input type="text" name="tramo_inicio" class="tramo-time" value="{{ h_inicio }}" inputmode="numeric" maxlength="5" placeholder="09:00" aria-label="Hora de inicio" autocomplete="off" data-time-input required>
+                                    <span class="tramo-sep" aria-hidden="true">—</span>
+                                    <input type="text" name="tramo_fin" class="tramo-time" value="{{ h_fin }}" inputmode="numeric" maxlength="5" placeholder="14:00" aria-label="Hora de fin" autocomplete="off" data-time-input required>
+                                    <button type="button" class="tramo-remove" data-remove-tramo aria-label="Quitar tramo">
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+                                    </button>
+                                </div>
+                            {% endfor %}
+                        {% else %}
+                            <span class="schedule-closed">Cerrado</span>
+                        {% endif %}
+                    </div>
+                    <button type="button" class="schedule-add-btn" data-add-tramo="{{ dia_num }}"
+                            {% if tramos|length >= max_tramos %}hidden{% endif %}>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+                        <span>Añadir tramo</span>
+                    </button>
+                </li>
+            {% endfor %}
+        </ul>
+        <div class="card-actions">
+            <button type="submit" class="btn btn-primary">Guardar horarios</button>
+        </div>
+    </form>
+</section>
+
+<section class="card disponibilidad-card">
+    <div class="card-header card-header-row">
+        <h2><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg> Días cerrados</h2>
+        <button type="button" class="btn btn-primary" data-open-modal="modal-dia-cerrado">+ Añadir día cerrado</button>
+    </div>
+
+    {% if dias_cerrados %}
+        <ul class="closed-days">
+            {% for d in dias_cerrados %}
+                <li class="closed-day-row">
+                    <div class="cd-info">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+                        <div>
+                            <strong>{{ d.fecha.strftime('%d/%m/%Y') }}</strong>
+                            <p>{{ d.motivo or 'Sin motivo' }}</p>
+                        </div>
+                    </div>
+                    <button type="button"
+                            class="btn-link-danger"
+                            data-open-delete-closed-day-modal
+                            data-action="{{ url_for('panel.dia_cerrado_eliminar', dia_id=d.id) }}"
+                            data-fecha="{{ d.fecha.strftime('%d/%m/%Y') }}">
+                        Eliminar
+                    </button>
+                </li>
+            {% endfor %}
+        </ul>
+    {% else %}
+        <div class="empty"><p>No hay días cerrados configurados.</p></div>
+    {% endif %}
+</section>
+
+<!-- Modal añadir día cerrado -->
+<div class="modal" id="modal-dia-cerrado" hidden>
+    <div class="modal-backdrop" data-close-modal></div>
+    <div class="modal-card">
+        <header class="modal-header">
+            <h3>Añadir día cerrado</h3>
+            <button type="button" class="modal-close" data-close-modal aria-label="Cerrar">×</button>
+        </header>
+        <form method="POST" id="form-dia-cerrado" action="{{ url_for('panel.dia_cerrado_nuevo') }}" class="modal-body" novalidate>
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="confirm_reservas" value="0" data-confirm-reservas>
+            <label class="field" data-field="fecha">
+                <span class="field-label">Fecha</span>
+                <input type="date" name="fecha" min="{{ hoy.isoformat() }}">
+                <span class="field-error" data-error-for="fecha"></span>
+            </label>
+            <label class="field" data-field="motivo">
+                <span class="field-label">Motivo (opcional)</span>
+                <input type="text" name="motivo" maxlength="150" placeholder="Festivo, vacaciones…">
+                <span class="field-error" data-error-for="motivo"></span>
+            </label>
+        </form>
+        <footer class="modal-footer">
+            <button type="button" class="btn btn-ghost" data-close-modal>Cancelar</button>
+            <button type="submit" form="form-dia-cerrado" class="btn btn-primary">Añadir</button>
+        </footer>
+    </div>
+</div>
+
+<!-- Modal eliminar día cerrado -->
+<div class="modal" id="modal-eliminar-dia-cerrado" hidden>
+    <div class="modal-backdrop" data-close-modal></div>
+    <div class="modal-card modal-card-sm">
+        <header class="modal-header">
+            <h3>Eliminar día cerrado</h3>
+            <button type="button" class="modal-close" data-close-modal aria-label="Cerrar">×</button>
+        </header>
+        <div class="modal-body">
+            <div class="modal-warning">
+                <div>
+                    <p class="modal-warning-title">¿Estás seguro de que quieres eliminar este día cerrado?</p>
+                    <p class="modal-warning-text" id="delete-closed-day-warning-text">Esta fecha volverá a estar disponible según el horario semanal.</p>
+                </div>
+            </div>
+        </div>
+        <footer class="modal-footer modal-footer-between">
+            <button type="button" class="btn btn-ghost" data-close-modal>No, cancelar</button>
+            <form method="POST" action="" id="form-eliminar-dia-cerrado" class="inline-form">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="btn btn-soft-danger">Confirmar</button>
+            </form>
+        </footer>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script type="application/json" id="disponibilidad-config">
+{
+    "maxTramos": {{ max_tramos|tojson }},
+    "defaultInicio": "09:00",
+    "defaultFin": "14:00"
+}
+</script>
+
+<script>
+(function() {
+    const config = JSON.parse(document.getElementById('disponibilidad-config').textContent);
+
+    // ---- Horario semanal: añadir / quitar tramos ----
+    const MAX_TRAMOS = config.maxTramos;
+    const DEFAULT_INICIO = config.defaultInicio;
+    const DEFAULT_FIN = config.defaultFin;
+
+    function buildTramoRow(dia, inicio, fin) {
+        const row = document.createElement('div');
+        row.className = 'tramo-row';
+        row.innerHTML = `
+            <input type="hidden" name="tramo_dia" value="${dia}">
+            <input type="text" name="tramo_inicio" class="tramo-time" value="${inicio}" inputmode="numeric" maxlength="5" placeholder="09:00" aria-label="Hora de inicio" autocomplete="off" data-time-input required>
+            <span class="tramo-sep" aria-hidden="true">—</span>
+            <input type="text" name="tramo_fin" class="tramo-time" value="${fin}" inputmode="numeric" maxlength="5" placeholder="14:00" aria-label="Hora de fin" autocomplete="off" data-time-input required>
+            <button type="button" class="tramo-remove" data-remove-tramo aria-label="Quitar tramo">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+            </button>
+        `;
+        return row;
+    }
+
+    function syncDayState(wrapper) {
+        const row = wrapper.closest('.schedule-row');
+        if (!row) return;
+        const count = wrapper.querySelectorAll('.tramo-row').length;
+        row.classList.toggle('is-closed', count === 0);
+        const dia = wrapper.getAttribute('data-tramos');
+        const addBtn = document.querySelector(`[data-add-tramo="${dia}"]`);
+        if (addBtn) addBtn.hidden = count >= MAX_TRAMOS;
+    }
+
+    document.querySelectorAll('[data-add-tramo]').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const dia = btn.getAttribute('data-add-tramo');
+            const wrapper = document.querySelector(`[data-tramos="${dia}"]`);
+            if (!wrapper) return;
+            if (wrapper.querySelectorAll('.tramo-row').length >= MAX_TRAMOS) return;
+            const empty = wrapper.querySelector('.schedule-closed');
+            if (empty) empty.remove();
+            wrapper.appendChild(buildTramoRow(dia, DEFAULT_INICIO, DEFAULT_FIN));
+            syncDayState(wrapper);
+        });
+    });
+
+    document.addEventListener('click', (e) => {
+        const t = e.target.closest('[data-remove-tramo]');
+        if (!t) return;
+        const row = t.closest('.tramo-row');
+        if (!row) return;
+        const wrapper = row.parentElement;
+        row.remove();
+        if (!wrapper.querySelector('.tramo-row')) {
+            const span = document.createElement('span');
+            span.className = 'schedule-closed';
+            span.textContent = 'Cerrado';
+            wrapper.appendChild(span);
+        }
+        syncDayState(wrapper);
+    });
+
+    document.addEventListener('input', (event) => {
+        const input = event.target.closest('[data-time-input]');
+        if (!input) return;
+        input.value = formatTimeWhileTyping(input.value);
+    });
+
+    document.addEventListener('blur', (event) => {
+        const input = event.target.closest('[data-time-input]');
+        if (!input) return;
+        input.value = formatTimeOnBlur(input.value);
+    }, true);
+
+    function formatTimeWhileTyping(value) {
+        const digits = String(value || '').replace(/\D/g, '').slice(0, 4);
+        if (digits.length <= 2) return digits;
+        return `${digits.slice(0, 2)}:${digits.slice(2)}`;
+    }
+
+    function formatTimeOnBlur(value) {
+        const digits = String(value || '').replace(/\D/g, '').slice(0, 4);
+        if (digits.length === 3 || digits.length === 4) {
+            const padded = digits.padStart(4, '0');
+            return `${padded.slice(0, 2)}:${padded.slice(2)}`;
+        }
+        return formatTimeWhileTyping(value);
+    }
+
+    // ---- Días cerrados: modal ----
+    const closedDayForm = document.getElementById('form-dia-cerrado');
+    const closedDayModal = document.getElementById('modal-dia-cerrado');
+
+    document.querySelectorAll('[data-open-modal="modal-dia-cerrado"]').forEach(btn => {
+        btn.addEventListener('click', () => {
+            if (!closedDayForm) return;
+            closedDayForm.reset();
+            resetClosedDayConfirmation();
+            clearClosedDayErrors();
+        });
+    });
+
+    document.addEventListener('click', (event) => {
+        const btn = event.target.closest('[data-open-delete-closed-day-modal]');
+        if (!btn) return;
+
+        const deleteModal = document.getElementById('modal-eliminar-dia-cerrado');
+        const deleteForm = document.getElementById('form-eliminar-dia-cerrado');
+        const warningText = document.getElementById('delete-closed-day-warning-text');
+        if (!deleteModal || !deleteForm) return;
+
+        deleteForm.action = btn.dataset.action || '';
+        if (warningText) {
+            const fecha = btn.dataset.fecha || 'esta fecha';
+            warningText.textContent = `El día ${fecha} volverá a estar disponible según el horario semanal.`;
+        }
+        deleteModal.hidden = false;
+    });
+
+    if (closedDayForm) {
+        closedDayForm.addEventListener('submit', async (event) => {
+            event.preventDefault();
+            clearClosedDayErrors();
+
+            const clientErrors = validateClosedDay(closedDayForm);
+            if (Object.keys(clientErrors).length > 0) {
+                showClosedDayErrors(clientErrors);
+                return;
+            }
+
+            const submitButton = document.querySelector(`[form="${closedDayForm.id}"][type="submit"]`);
+            if (submitButton) submitButton.disabled = true;
+
+            try {
+                const res = await fetch(closedDayForm.action, {
+                    method: 'POST',
+                    body: new FormData(closedDayForm),
+                    headers: { 'X-Requested-With': 'XMLHttpRequest' },
+                });
+                const data = await res.json();
+                if (data.confirm_required) {
+                    markClosedDayNeedsConfirmation(data.message || 'Ese día tiene reservas confirmadas. Pulsa de nuevo para confirmar.');
+                    return;
+                }
+                if (!res.ok || !data.ok) {
+                    showClosedDayErrors(data.errors || { general: 'No se pudo guardar el día cerrado.' });
+                    return;
+                }
+                closedDayForm.reset();
+                resetClosedDayConfirmation();
+                closedDayModal.hidden = true;
+                window.location.href = data.redirect || '{{ url_for("panel.disponibilidad") }}';
+            } catch (err) {
+                showClosedDayErrors({ general: 'No se pudo guardar el día cerrado.' });
+            } finally {
+                if (submitButton) submitButton.disabled = false;
+            }
+        });
+
+        closedDayForm.querySelectorAll('input[name="fecha"], input[name="motivo"]').forEach(input => {
+            input.addEventListener('input', () => {
+                resetClosedDayConfirmation();
+                clearClosedDayFieldError(input.name);
+                const general = closedDayForm.querySelector('.form-error-general');
+                if (general) general.remove();
+            });
+        });
+    }
+
+    function markClosedDayNeedsConfirmation(message) {
+        const confirmInput = closedDayForm && closedDayForm.querySelector('[data-confirm-reservas]');
+        const submitButton = document.querySelector(`[form="${closedDayForm.id}"][type="submit"]`);
+        if (confirmInput) confirmInput.value = '1';
+        if (submitButton) submitButton.textContent = 'Añadir igualmente';
+        showClosedDayErrors({ general: message });
+    }
+
+    function resetClosedDayConfirmation() {
+        if (!closedDayForm) return;
+        const confirmInput = closedDayForm.querySelector('[data-confirm-reservas]');
+        const submitButton = document.querySelector(`[form="${closedDayForm.id}"][type="submit"]`);
+        if (confirmInput) confirmInput.value = '0';
+        if (submitButton) submitButton.textContent = 'Añadir';
+    }
+
+    function validateClosedDay(form) {
+        const errors = {};
+        const fecha = (form.fecha.value || '').trim();
+        const minFecha = form.fecha.getAttribute('min') || '';
+        if (!fecha) {
+            errors.fecha = 'Indica una fecha válida.';
+        } else if (minFecha && fecha < minFecha) {
+            errors.fecha = 'La fecha no puede ser anterior a hoy.';
+        }
+        return errors;
+    }
+
+    function clearClosedDayErrors() {
+        if (!closedDayForm) return;
+        closedDayForm.querySelectorAll('.field.has-error').forEach(field => field.classList.remove('has-error'));
+        closedDayForm.querySelectorAll('.field-error').forEach(error => { error.textContent = ''; });
+        const general = closedDayForm.querySelector('.form-error-general');
+        if (general) general.remove();
+    }
+
+    function clearClosedDayFieldError(name) {
+        if (!closedDayForm) return;
+        const field = closedDayForm.querySelector(`[data-field="${name}"]`);
+        const error = closedDayForm.querySelector(`[data-error-for="${name}"]`);
+        if (field) field.classList.remove('has-error');
+        if (error) error.textContent = '';
+    }
+
+    function showClosedDayErrors(errors) {
+        clearClosedDayErrors();
+        Object.entries(errors).forEach(([fieldName, message]) => {
+            if (fieldName === 'general') {
+                closedDayForm.insertAdjacentHTML('afterbegin', `<p class="field-error form-error-general">${escape(message)}</p>`);
+                return;
+            }
+            const field = closedDayForm.querySelector(`[data-field="${fieldName}"]`);
+            const error = closedDayForm.querySelector(`[data-error-for="${fieldName}"]`);
+            if (field) field.classList.add('has-error');
+            if (error) error.textContent = message;
+        });
+    }
+
+    function escape(s) {
+        return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({
+            '&': '&amp;',
+            '<': '&lt;',
+            '>': '&gt;',
+            '"': '&quot;',
+            "'": '&#39;'
+        }[c]));
+    }
+})();
+</script>
+{% endblock %}
