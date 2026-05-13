@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Iniciar sesión · PeluGestor</title>
+    <title>Iniciar sesión · BarberApp</title>
     <link rel="stylesheet" href="{{ url_for('panel.static', filename='css/panel.css') }}">
 </head>
 <body class="auth-body">
@@ -14,7 +14,7 @@
                 <path d="M20 4L8.12 15.88M14.47 14.48L20 20M8.12 8.12L12 12"/>
             </svg>
         </div>
-        <h1 class="auth-title">PeluGestor</h1>
+        <h1 class="auth-title">BarberApp</h1>
         <p class="auth-subtitle">Panel de gestión para peluquerías</p>
 
         <form method="POST" action="{{ url_for('auth.login') }}" class="auth-form" novalidate>

@@ -1,6 +1,6 @@
-# PeluGestor
+# BarberApp
 
-PeluGestor es una plataforma multi-tenant para gestionar reservas de peluquerías. El proyecto combina un panel web para el administrador de cada peluquería y un bot de WhatsApp para que los clientes puedan reservar o cancelar citas.
+BarberApp es una plataforma multi-tenant para gestionar reservas de peluquerías. El proyecto combina un panel web para el administrador de cada peluquería y un bot de WhatsApp para que los clientes puedan reservar o cancelar citas.
 
 La idea principal es sencilla: **MySQL es la fuente de verdad**. El panel y el bot usan los mismos modelos, repositorios y servicios de negocio. Así, una reserva se valida igual si nace desde el panel o desde WhatsApp.
 

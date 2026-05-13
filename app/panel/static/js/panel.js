@@ -1,4 +1,4 @@
-// PeluGestor - JS del panel
+// BarberApp - JS del panel
 // Comportamientos genéricos: modales, drawers, cierre con ESC.
 
 (function () {

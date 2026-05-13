@@ -1,7 +1,7 @@
 services:
   api:
     build: .
-    container_name: pelugestor_api
+    container_name: barberapp_api
     ports:
       - "5000:5000"
     env_file:
@@ -14,7 +14,7 @@ services:
 
   mysql:
     image: mysql:8.0
-    container_name: pelugestor_mysql
+    container_name: barberapp_mysql
     restart: unless-stopped
     environment:
       MYSQL_DATABASE: BotPeluTFG

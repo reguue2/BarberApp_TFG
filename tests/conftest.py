@@ -1,4 +1,4 @@
-"""Datos comunes para los tests de PeluGestor."""
+"""Datos comunes para los tests de BarberApp."""
 
 from datetime import date, time, timedelta
 from decimal import Decimal

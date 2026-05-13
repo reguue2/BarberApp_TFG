@@ -1,4 +1,4 @@
-# Plan de pruebas de PeluGestor
+# Plan de pruebas de BarberApp
 
 Este directorio recoge las pruebas usadas para justificar el apartado de testing del TFG. La idea no es demostrar una cobertura perfecta, sino dejar una validación clara, sencilla de explicar y conectada con los requisitos principales del sistema.
 
