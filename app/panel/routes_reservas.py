@@ -234,18 +234,42 @@ def _render_reservas_page(
 
 
 def _build_agenda(peluqueria, fecha, reservas, dia_cerrado=None):
-    """Construye los bloques visibles de la agenda diaria.
-
-    Si la fecha está cerrada, no se muestran huecos libres de horario. Solo se
-    mantienen reservas existentes para que el administrador pueda revisarlas.
-    Si la fecha es hoy, se ocultan huecos libres pasados, pero no reservas existentes.
-    """
+    """Construye los bloques visibles de la agenda diaria."""
+    
     dia_semana = fecha.weekday() + 1
     tramos = [] if dia_cerrado else HorarioRepository.list_active_for_weekday(peluqueria.id, dia_semana)
 
+    hoy = today_local()
+    es_pasado = fecha < hoy
+    es_hoy = fecha == hoy
+
+    # Estado de la jornada para el día actual.
+    dia_acabado = False
+    ahora_min = 0
+    if es_hoy:
+        now = now_local()
+        ahora_min = now.hour * 60 + now.minute
+        if tramos:
+            fin_dia_min = max(to_min(t.hora_fin) for t in tramos)
+            dia_acabado = ahora_min >= fin_dia_min
+        else:
+            # Sin horario hoy → no hay jornada en curso, tratamos las reservas
+            # como histórico para que se vean todas.
+            dia_acabado = True
+
+    # En modo histórico no mostramos huecos libres del horario.
+    modo_historico = es_pasado or dia_acabado
+
+    # Para el día actual (jornada en curso) ocultamos reservas anteriores
+    # a (hora actual - 1h).
+    reservas_visibles = reservas
+    if es_hoy and not dia_acabado:
+        umbral_min = max(0, ahora_min - 60)
+        reservas_visibles = [r for r in reservas if to_min(r.hora) >= umbral_min]
+
     paso = peluqueria.rango_reservas_min or 30
     bloques_horarios = []
-    if tramos:
+    if tramos and not modo_historico:
         for tramo in tramos:
             inicio = to_min(tramo.hora_inicio)
             fin = to_min(tramo.hora_fin)
@@ -254,17 +278,24 @@ def _build_agenda(peluqueria, fecha, reservas, dia_cerrado=None):
                 bloques_horarios.append(from_min(cur))
                 cur += paso
 
-    bloques_reservas = sorted({r.hora.strftime("%H:%M") for r in reservas})
+    bloques_reservas = sorted({r.hora.strftime("%H:%M") for r in reservas_visibles})
     todas_horas = sorted(set(bloques_horarios) | set(bloques_reservas))
-    todas_horas = _filter_visible_hours_for_agenda(todas_horas, fecha, reservas)
 
-    if not todas_horas and not reservas:
-        # día sin horario y sin reservas: render vacío con cabecera
+    # En el día actual con jornada en curso, ocultar huecos libres anteriores
+    # a la hora actual (las horas con reserva ya quedaron filtradas antes).
+    if es_hoy and not dia_acabado:
+        horas_con_reserva = set(bloques_reservas)
+        todas_horas = [
+            hora for hora in todas_horas
+            if hora in horas_con_reserva or to_min(hora) >= ahora_min
+        ]
+
+    if not todas_horas:
         return []
 
     bloques = []
     for hora in todas_horas:
-        match = [r for r in reservas if r.hora.strftime("%H:%M") == hora]
+        match = [r for r in reservas_visibles if r.hora.strftime("%H:%M") == hora]
         bloques.append({"hora": hora, "reservas": match})
 
     return bloques
@@ -318,19 +349,6 @@ def _filter_future_hours_for_today(horas, fecha):
     now = now_local()
     current_min = now.hour * 60 + now.minute
     return [hora for hora in horas if to_min(hora) >= current_min]
-
-
-def _filter_visible_hours_for_agenda(horas, fecha, reservas):
-    if fecha != today_local():
-        return horas
-
-    now = now_local()
-    current_min = now.hour * 60 + now.minute
-    reservation_hours = {r.hora.strftime("%H:%M") for r in reservas}
-    return [
-        hora for hora in horas
-        if hora in reservation_hours or to_min(hora) >= current_min
-    ]
 
 
 def _validate_reserva_form(servicio_id, fecha, hora_txt, nombre, telefono):
