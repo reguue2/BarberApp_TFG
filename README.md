@@ -240,18 +240,12 @@ En Render, `DATABASE_URL` apunta a la base de datos MySQL externa. Las credencia
 
 ## Tests
 
-El proyecto incluye 30 pruebas automáticas entre unitarias e integración.
+El proyecto incluye alrededor de 30 pruebas automáticas entre unitarias e integración.
 
 Ejecutar con Docker:
 
 ```bash
 docker compose exec api pytest
-```
-
-Ejecutar sin Docker:
-
-```bash
-python -m pytest
 ```
 
 Los tests usan SQLite en memoria. Esto hace que sean rápidos y que no dependan de MySQL, WhatsApp real ni OpenAI real.
@@ -262,43 +256,3 @@ Resumen de pruebas:
 | --- | --- | --- |
 | Unitarias | `tests/unit/` | Reglas concretas: disponibilidad, teléfonos, reservas y cancelaciones. |
 | Integración | `tests/integration/` | Rutas del panel, webhook, flujo conversacional y base de datos de prueba. |
-| Manuales | `tests/README.md` | Pruebas reales del panel y del bot desplegado con datos ficticios. |
-
-Casos importantes cubiertos:
-
-- Login y protección de rutas privadas.
-- Aislamiento multi-tenant.
-- Creación de reservas desde panel.
-- Flujo de reserva desde WhatsApp.
-- Cancelación de reservas.
-- Días cerrados.
-- Solapamientos y capacidad por profesionales activos.
-- Validación de teléfonos.
-- Webhook de WhatsApp.
-- Evitar borrar clientes o profesionales con reservas futuras.
-
-## Alcance real del proyecto
-
-El proyecto está planteado como un prototipo funcional de TFG, no como una solución comercial terminada.
-
-Entra dentro del alcance:
-
-- Panel de administración.
-- Gestión de peluquerías, servicios, profesionales, clientes, horarios y reservas.
-- Bot real por WhatsApp en el despliegue.
-- Multi-tenant básico.
-- Datos demo.
-- Tests automáticos y pruebas manuales.
-
-Queda fuera del alcance:
-
-- Pagos.
-- Facturación.
-- Control de stock.
-- Aplicación móvil.
-- Agenda avanzada por empleado.
-- Recordatorios automáticos.
-- Integración con Google Calendar u otras agendas externas.
-- Sistema comercial completo para producción.
-
-La decisión ha sido cerrar menos funcionalidades, pero hacerlas coherentes y defendibles: panel, bot, base de datos común, reglas de negocio y pruebas.
