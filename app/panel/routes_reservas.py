@@ -1,4 +1,4 @@
-# Reservas: calendario mensual + agenda diaria con bloques de hora.
+# Reservas: calendario mensual + agenda diaria con vista tipo timeline.
 
 import calendar
 from datetime import date
@@ -9,6 +9,7 @@ from flask import flash, jsonify, redirect, render_template, request, url_for
 from app.bot.time_utils import from_min, to_min
 from app.forms.validators import clean_str, parse_date, parse_int, parse_phone, parse_time
 from app.panel import panel_bp
+from app.panel.agenda_layout import UNIT_HEIGHT_PX, build_tramo_layout
 from app.panel.helpers import current_peluqueria, login_required
 from app.repositories.cliente_repository import ClienteRepository
 from app.repositories.horario_repository import HorarioRepository
@@ -19,8 +20,6 @@ from app.services.booking_service import BookingService
 from app.utils.datetime_utils import now_local, today_local
 from app.utils.phone_numbers import normalize_phone
 
-AGENDA_PAGE_SIZE = 10
-
 
 @panel_bp.get("/reservas")
 @login_required
@@ -30,9 +29,8 @@ def reservas():
 
     fecha = parse_date(request.args.get("fecha")) or hoy
     estado_filtro = request.args.get("estado") or "confirmadas"
-    page = parse_int(request.args.get("page"), minimum=1) or 1
 
-    return _render_reservas_page(pelu, fecha, estado_filtro, page)
+    return _render_reservas_page(pelu, fecha, estado_filtro)
 
 
 @panel_bp.post("/reservas/nueva")
@@ -67,7 +65,6 @@ def nueva_reserva():
             pelu,
             fecha_contexto,
             "confirmadas",
-            1,
             form_errors=form_errors,
             form_values=form_values,
             abrir_modal_nueva_reserva=True,
@@ -92,7 +89,6 @@ def nueva_reserva():
                 pelu,
                 fecha_contexto,
                 "confirmadas",
-                1,
                 form_errors=form_errors,
                 form_values=form_values,
                 abrir_modal_nueva_reserva=True,
@@ -182,7 +178,6 @@ def _render_reservas_page(
         pelu,
         fecha,
         estado_filtro,
-        page,
         form_errors=None,
         form_values=None,
         abrir_modal_nueva_reserva=False):
@@ -199,8 +194,7 @@ def _render_reservas_page(
         reservas_dia = [r for r in reservas_dia if r.estado == "cancelada"]
 
     dia_cerrado = HorarioRepository.get_closed_day(pelu.id, fecha)
-    bloques = _build_agenda(pelu, fecha, reservas_dia, dia_cerrado=dia_cerrado)
-    bloques, agenda_pagination = _paginate_agenda(bloques, page)
+    agenda = _build_agenda(pelu, fecha, reservas_dia, dia_cerrado=dia_cerrado)
 
     if mes == 1:
         prev_mes_fecha = date(anio - 1, 12, 1)
@@ -219,8 +213,7 @@ def _render_reservas_page(
         anio=anio,
         mes=mes,
         semanas=semanas,
-        bloques=bloques,
-        agenda_pagination=agenda_pagination,
+        agenda=agenda,
         dia_cerrado=dia_cerrado,
         estado_filtro=estado_filtro,
         prev_mes=prev_mes_fecha,
@@ -234,112 +227,78 @@ def _render_reservas_page(
 
 
 def _build_agenda(peluqueria, fecha, reservas, dia_cerrado=None):
-    """Construye los bloques visibles de la agenda diaria."""
+    """Prepara los datos del timeline diario para el template."""
     
+    unit_min = peluqueria.rango_reservas_min or 30
+
     dia_semana = fecha.weekday() + 1
-    tramos = [] if dia_cerrado else HorarioRepository.list_active_for_weekday(peluqueria.id, dia_semana)
+    tramos_db = [] if dia_cerrado else HorarioRepository.list_active_for_weekday(peluqueria.id, dia_semana)
 
     hoy = today_local()
-    es_pasado = fecha < hoy
     es_hoy = fecha == hoy
-
-    # Estado de la jornada para el día actual.
-    dia_acabado = False
     ahora_min = 0
     if es_hoy:
         now = now_local()
         ahora_min = now.hour * 60 + now.minute
-        if tramos:
-            fin_dia_min = max(to_min(t.hora_fin) for t in tramos)
-            dia_acabado = ahora_min >= fin_dia_min
-        else:
-            # Sin horario hoy → no hay jornada en curso, tratamos las reservas
-            # como histórico para que se vean todas.
-            dia_acabado = True
 
-    # En modo histórico no mostramos huecos libres del horario.
-    modo_historico = es_pasado or dia_acabado
+    reserva_items = []
+    for r in reservas:
+        dur = (r.servicio.duracion_min if r.servicio else None) or unit_min
+        reserva_items.append({
+            "start_min": to_min(r.hora),
+            "dur_min": int(dur),
+            "payload": r,
+        })
 
-    # Para el día actual (jornada en curso) ocultamos reservas anteriores
-    # a (hora actual - 1h).
-    reservas_visibles = reservas
-    if es_hoy and not dia_acabado:
-        umbral_min = max(0, ahora_min - 60)
-        reservas_visibles = [r for r in reservas if to_min(r.hora) >= umbral_min]
+    tramos_visibles = [
+        (to_min(t.hora_inicio), to_min(t.hora_fin))
+        for t in tramos_db
+    ]
 
-    paso = peluqueria.rango_reservas_min or 30
-    bloques_horarios = []
-    if tramos and not modo_historico:
-        for tramo in tramos:
-            inicio = to_min(tramo.hora_inicio)
-            fin = to_min(tramo.hora_fin)
-            cur = inicio
-            while cur < fin:
-                bloques_horarios.append(from_min(cur))
-                cur += paso
+    if not tramos_visibles and reserva_items:
+        inicio = min(r["start_min"] for r in reserva_items)
+        fin = max(r["start_min"] + r["dur_min"] for r in reserva_items)
+        safe_unit = unit_min if unit_min and unit_min > 0 else 30
+        inicio = (inicio // safe_unit) * safe_unit
+        fin = int(ceil(fin / safe_unit)) * safe_unit
+        if fin <= inicio:
+            fin = inicio + safe_unit
+        tramos_visibles = [(inicio, fin)]
 
-    bloques_reservas = sorted({r.hora.strftime("%H:%M") for r in reservas_visibles})
-    todas_horas = sorted(set(bloques_horarios) | set(bloques_reservas))
+    tramos_layout = []
+    encajadas = set()
+    for ts, te in tramos_visibles:
+        tramo = build_tramo_layout(ts, te, reserva_items, unit_min)
+        tramos_layout.append(tramo)
+        for ev in tramo["reservas"]:
+            encajadas.add(id(ev["payload"]))
 
-    # En el día actual con jornada en curso, ocultar huecos libres anteriores
-    # a la hora actual (las horas con reserva ya quedaron filtradas antes).
-    if es_hoy and not dia_acabado:
-        horas_con_reserva = set(bloques_reservas)
-        todas_horas = [
-            hora for hora in todas_horas
-            if hora in horas_con_reserva or to_min(hora) >= ahora_min
-        ]
+    fuera = [
+        r["payload"]
+        for r in reserva_items
+        if id(r["payload"]) not in encajadas
+    ]
 
-    if not todas_horas:
-        return []
+    now_marker = None
+    if es_hoy:
+        safe_unit = unit_min if unit_min and unit_min > 0 else 30
+        px_per_min = UNIT_HEIGHT_PX / safe_unit
+        for tramo_idx, (ts, te) in enumerate(tramos_visibles):
+            if ts <= ahora_min <= te:
+                now_marker = {
+                    "tramo_index": tramo_idx,
+                    "top_px": int(round((ahora_min - ts) * px_per_min)),
+                    "label": from_min(ahora_min),
+                }
+                break
 
-    bloques = []
-    for hora in todas_horas:
-        match = [r for r in reservas_visibles if r.hora.strftime("%H:%M") == hora]
-        bloques.append({"hora": hora, "reservas": match})
-
-    return bloques
-
-
-def _paginate_agenda(bloques, page):
-    """Pagina la agenda por entradas visibles, no solo por horas.
-
-    Una hora con varias reservas cuenta como varias entradas. Así la paginación
-    mantiene un tamaño realista aunque existan varias reservas en el mismo tramo.
-    Los huecos libres cuentan como una entrada para no perder horas disponibles.
-    """
-    agenda_items = []
-    for bloque in bloques:
-        if bloque["reservas"]:
-            for reserva in bloque["reservas"]:
-                agenda_items.append({"hora": bloque["hora"], "reserva": reserva})
-        else:
-            agenda_items.append({"hora": bloque["hora"], "reserva": None})
-
-    total = len(agenda_items)
-    total_pages = max(1, ceil(total / AGENDA_PAGE_SIZE)) if total else 1
-    current_page = min(max(page, 1), total_pages)
-    start = (current_page - 1) * AGENDA_PAGE_SIZE
-    end = start + AGENDA_PAGE_SIZE
-
-    page_items = agenda_items[start:end]
-    page_blocks = []
-    for item in page_items:
-        if not page_blocks or page_blocks[-1]["hora"] != item["hora"]:
-            page_blocks.append({"hora": item["hora"], "reservas": []})
-        if item["reserva"] is not None:
-            page_blocks[-1]["reservas"].append(item["reserva"])
-
-    pagination = {
-        "page": current_page,
-        "total_pages": total_pages,
-        "has_prev": current_page > 1,
-        "has_next": current_page < total_pages,
-        "prev_page": current_page - 1,
-        "next_page": current_page + 1,
-        "total_items": total,
+    return {
+        "tramos": tramos_layout,
+        "fuera_horario": fuera,
+        "unit_min": unit_min,
+        "unit_height_px": UNIT_HEIGHT_PX,
+        "now_marker": now_marker,
     }
-    return page_blocks, pagination
 
 
 def _filter_future_hours_for_today(horas, fecha):

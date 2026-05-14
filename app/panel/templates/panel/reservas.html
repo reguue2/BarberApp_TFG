@@ -53,60 +53,97 @@
             <h2>Agenda del {{ fecha.strftime('%d/%m/%Y') }}</h2>
         </div>
 
-        {% if bloques %}
-            <div class="agenda-blocks">
-                {% for bloque in bloques %}
-                    <div class="agenda-block">
-                        <span class="block-time">{{ bloque.hora }}</span>
-                        {% if bloque.reservas %}
-                            <div class="block-content">
-                                {% for r in bloque.reservas %}
-                                    {% set is_cancelled = r.estado == 'cancelada' %}
-                                    <div class="reservation-pill {% if is_cancelled %}is-cancelled{% endif %}">
-                                        <div class="rp-main">
-                                            <strong>{{ r.cliente.nombre if r.cliente else '—' }}</strong>
-                                            <span class="rp-client">{{ r.servicio.nombre if r.servicio else '—' }} · {{ r.cliente.telefono|phone_local if r.cliente else '' }}</span>
-                                        </div>
-                                        <div class="rp-side">
-                                            {% if is_cancelled %}
-                                                <span class="badge badge-danger">Cancelada</span>
-                                            {% else %}
-                                                <button type="button"
-                                                        class="btn btn-link-danger"
-                                                        data-open-cancel-modal
-                                                        data-action="{{ url_for('panel.cancelar_reserva', reserva_id=r.id) }}"
-                                                        data-fecha="{{ fecha.isoformat() }}">
-                                                    Cancelar
-                                                </button>
-                                            {% endif %}
-                                        </div>
-                                    </div>
+        {% if agenda.tramos or agenda.fuera_horario %}
+            <div class="agenda-timeline">
+                {% for tramo in agenda.tramos %}
+                    {% set tramo_index = loop.index0 %}
+                    <section class="agenda-tramo">
+                        <header class="agenda-tramo-header">{{ tramo.start_label }} – {{ tramo.end_label }}</header>
+                        <div class="agenda-tramo-grid" data-height-px="{{ tramo.height_px }}">
+                            <div class="agenda-gutter">
+                                {% for line in tramo.gridlines %}
+                                    {# La última etiqueta coincide con el fin del tramo: la marcamos
+                                       como "is-end" para anclarla justo encima de la línea final
+                                       (con translateY) y que no se corte por debajo del área. #}
+                                    <span class="agenda-gutter-label {% if line.is_hour %}is-hour{% endif %}{% if loop.last %} is-end{% endif %}"
+                                          data-top-px="{{ line.top_px }}">{{ line.label }}</span>
                                 {% endfor %}
                             </div>
-                        {% else %}
-                            <div class="block-content">
-                                <span class="block-empty">Disponible</span>
+                            <div class="agenda-area">
+                                {% for line in tramo.gridlines %}
+                                    <div class="agenda-gridline {% if line.is_hour %}is-hour{% endif %}"
+                                         data-top-px="{{ line.top_px }}"></div>
+                                {% endfor %}
+                                {% for ev in tramo.reservas %}
+                                    {% set r = ev.payload %}
+                                    {% set is_cancelled = r.estado == 'cancelada' %}
+                                    {% set left_pct = ev.col * 100 / ev.cols %}
+                                    {% set width_pct = 100 / ev.cols %}
+                                    <button type="button"
+                                            class="agenda-event {% if is_cancelled %}is-cancelled{% endif %}"
+                                            data-top-px="{{ ev.top_px }}"
+                                            data-height-px="{{ ev.height_px }}"
+                                            data-left-pct="{{ '%.2f'|format(left_pct) }}"
+                                            data-width-pct="{{ '%.2f'|format(width_pct) }}"
+                                            data-open-reserva-detail
+                                            data-reserva-id="{{ r.id }}"
+                                            data-nombre="{{ r.cliente.nombre if r.cliente else '—' }}"
+                                            data-telefono="{{ r.cliente.telefono|phone_local if r.cliente else '' }}"
+                                            data-servicio="{{ r.servicio.nombre if r.servicio else '—' }}"
+                                            data-duracion="{{ ev.dur_min }}"
+                                            data-precio="{% if r.servicio %}{{ '%.2f'|format(r.servicio.precio|float) }}{% endif %}"
+                                            data-fecha="{{ fecha.strftime('%d/%m/%Y') }}"
+                                            data-fecha-iso="{{ fecha.isoformat() }}"
+                                            data-hora="{{ r.hora.strftime('%H:%M') }}"
+                                            data-estado="{{ r.estado }}"
+                                            data-origen="{{ r.origen }}"
+                                            data-cancel-action="{{ url_for('panel.cancelar_reserva', reserva_id=r.id) }}">
+                                        <span class="agenda-event-name">{{ r.cliente.nombre if r.cliente else '—' }}</span>
+                                        <span class="agenda-event-time">{{ r.hora.strftime('%H:%M') }}</span>
+                                    </button>
+                                {% endfor %}
                             </div>
-                        {% endif %}
-                    </div>
+                            {% if agenda.now_marker and agenda.now_marker.tramo_index == tramo_index %}
+                                <div class="agenda-now"
+                                     data-top-px="{{ agenda.now_marker.top_px }}"
+                                     aria-label="Hora actual: {{ agenda.now_marker.label }}"></div>
+                            {% endif %}
+                        </div>
+                    </section>
                 {% endfor %}
-            </div>
 
-            {% if agenda_pagination.total_pages > 1 %}
-                <nav class="pagination agenda-pagination" aria-label="Paginación de agenda">
-                    {% if agenda_pagination.has_prev %}
-                        <a class="pagination-link" href="{{ url_for('panel.reservas', fecha=fecha.isoformat(), estado=estado_filtro, page=agenda_pagination.prev_page) }}">Anterior</a>
-                    {% else %}
-                        <span class="pagination-link is-disabled">Anterior</span>
-                    {% endif %}
-                    <span class="pagination-status">Página {{ agenda_pagination.page }} de {{ agenda_pagination.total_pages }}</span>
-                    {% if agenda_pagination.has_next %}
-                        <a class="pagination-link" href="{{ url_for('panel.reservas', fecha=fecha.isoformat(), estado=estado_filtro, page=agenda_pagination.next_page) }}">Siguiente</a>
-                    {% else %}
-                        <span class="pagination-link is-disabled">Siguiente</span>
-                    {% endif %}
-                </nav>
-            {% endif %}
+                {% if agenda.fuera_horario %}
+                    <section class="agenda-tramo agenda-tramo-outside">
+                        <header class="agenda-tramo-header">Fuera de horario</header>
+                        <ul class="agenda-outside-list">
+                            {% for r in agenda.fuera_horario %}
+                                {% set is_cancelled = r.estado == 'cancelada' %}
+                                {% set dur = (r.servicio.duracion_min if r.servicio else agenda.unit_min) %}
+                                <li>
+                                    <button type="button"
+                                            class="agenda-event is-outside {% if is_cancelled %}is-cancelled{% endif %}"
+                                            data-open-reserva-detail
+                                            data-reserva-id="{{ r.id }}"
+                                            data-nombre="{{ r.cliente.nombre if r.cliente else '—' }}"
+                                            data-telefono="{{ r.cliente.telefono|phone_local if r.cliente else '' }}"
+                                            data-servicio="{{ r.servicio.nombre if r.servicio else '—' }}"
+                                            data-duracion="{{ dur }}"
+                                            data-precio="{% if r.servicio %}{{ '%.2f'|format(r.servicio.precio|float) }}{% endif %}"
+                                            data-fecha="{{ fecha.strftime('%d/%m/%Y') }}"
+                                            data-fecha-iso="{{ fecha.isoformat() }}"
+                                            data-hora="{{ r.hora.strftime('%H:%M') }}"
+                                            data-estado="{{ r.estado }}"
+                                            data-origen="{{ r.origen }}"
+                                            data-cancel-action="{{ url_for('panel.cancelar_reserva', reserva_id=r.id) }}">
+                                        <span class="agenda-event-name">{{ r.cliente.nombre if r.cliente else '—' }}</span>
+                                        <span class="agenda-event-time">{{ r.hora.strftime('%H:%M') }}</span>
+                                    </button>
+                                </li>
+                            {% endfor %}
+                        </ul>
+                    </section>
+                {% endif %}
+            </div>
         {% else %}
             <div class="empty">
                 {% if dia_cerrado %}
@@ -177,6 +214,34 @@
     </div>
 </div>
 
+<!-- Modal detalle de reserva -->
+<div class="modal" id="modal-detalle-reserva" hidden>
+    <div class="modal-backdrop" data-close-modal></div>
+    <div class="modal-card">
+        <header class="modal-header">
+            <h3>Detalle de la reserva</h3>
+            <button type="button" class="modal-close" data-close-modal aria-label="Cerrar">×</button>
+        </header>
+        <div class="modal-body">
+            <dl class="reserva-detail">
+                <div><dt>Cliente</dt><dd id="detalle-nombre">—</dd></div>
+                <div><dt>Teléfono</dt><dd id="detalle-telefono">—</dd></div>
+                <div><dt>Servicio</dt><dd id="detalle-servicio">—</dd></div>
+                <div><dt>Duración</dt><dd id="detalle-duracion">—</dd></div>
+                <div id="detalle-precio-row"><dt>Precio</dt><dd id="detalle-precio">—</dd></div>
+                <div><dt>Fecha</dt><dd id="detalle-fecha">—</dd></div>
+                <div><dt>Hora</dt><dd id="detalle-hora">—</dd></div>
+                <div><dt>Estado</dt><dd id="detalle-estado">—</dd></div>
+                <div><dt>Origen</dt><dd id="detalle-origen">—</dd></div>
+            </dl>
+        </div>
+        <footer class="modal-footer modal-footer-between">
+            <button type="button" class="btn btn-ghost" data-close-modal>Cerrar</button>
+            <button type="button" id="detalle-cancelar-btn" class="btn btn-soft-danger" hidden>Cancelar reserva</button>
+        </footer>
+    </div>
+</div>
+
 <!-- Modal cancelar reserva -->
 <div class="modal" id="modal-cancelar-reserva" hidden>
     <div class="modal-backdrop" data-close-modal></div>
@@ -216,6 +281,21 @@
     const todayIso = '{{ hoy.isoformat() }}';
     const clienteSearchUrl = "{{ url_for('panel.buscar_clientes_reserva') }}";
     const clienteSearchTimers = {};
+
+    function applyAgendaStyles() {
+        document.querySelectorAll('[data-height-px]').forEach(function(el) {
+            el.style.height = el.dataset.heightPx + 'px';
+        });
+
+        document.querySelectorAll('[data-top-px]').forEach(function(el) {
+            el.style.top = el.dataset.topPx + 'px';
+        });
+
+        document.querySelectorAll('.agenda-event[data-left-pct][data-width-pct]').forEach(function(el) {
+            el.style.left = 'calc(' + el.dataset.leftPct + '% + 2px)';
+            el.style.width = 'calc(' + el.dataset.widthPct + '% - 4px)';
+        });
+    }
 
     function escapeHtml(value) {
         return String(value).replace(/[&<>'"]/g, function(char) {
@@ -422,18 +502,69 @@
         });
     }
 
-    document.querySelectorAll('[data-open-cancel-modal]').forEach(function(btn) {
-        btn.addEventListener('click', function() {
-            const modal = document.getElementById('modal-cancelar-reserva');
-            const cancelForm = document.getElementById('form-cancelar-reserva');
-            const fechaInput = document.getElementById('cancel-fecha');
-            if (!modal || !cancelForm || !fechaInput) return;
+    function openCancelModal(action, fechaIso) {
+        const modal = document.getElementById('modal-cancelar-reserva');
+        const cancelForm = document.getElementById('form-cancelar-reserva');
+        const fechaInput = document.getElementById('cancel-fecha');
+        if (!modal || !cancelForm || !fechaInput) return;
+        cancelForm.action = action || '';
+        fechaInput.value = fechaIso || '{{ fecha.isoformat() }}';
+        modal.hidden = false;
+    }
 
-            cancelForm.action = btn.dataset.action || '';
-            fechaInput.value = btn.dataset.fecha || '{{ fecha.isoformat() }}';
-            modal.hidden = false;
-        });
+    function fillReservaDetail(btn) {
+        const data = btn.dataset;
+        const set = function(id, value) {
+            const el = document.getElementById(id);
+            if (el) el.textContent = value || '—';
+        };
+        set('detalle-nombre', data.nombre);
+        set('detalle-telefono', data.telefono);
+        set('detalle-servicio', data.servicio);
+        set('detalle-duracion', data.duracion ? data.duracion + ' min' : '');
+        set('detalle-fecha', data.fecha);
+        set('detalle-hora', data.hora);
+        set('detalle-origen', data.origen);
+
+        const estadoEl = document.getElementById('detalle-estado');
+        if (estadoEl) {
+            estadoEl.textContent = data.estado === 'cancelada' ? 'Cancelada' : 'Confirmada';
+        }
+
+        const precioRow = document.getElementById('detalle-precio-row');
+        const precioValue = document.getElementById('detalle-precio');
+        if (precioRow && precioValue) {
+            if (data.precio) {
+                precioValue.textContent = data.precio + ' €';
+                precioRow.hidden = false;
+            } else {
+                precioRow.hidden = true;
+            }
+        }
+
+        const cancelBtn = document.getElementById('detalle-cancelar-btn');
+        const detailModal = document.getElementById('modal-detalle-reserva');
+        if (cancelBtn) {
+            if (data.estado === 'cancelada' || !data.cancelAction) {
+                cancelBtn.hidden = true;
+                cancelBtn.onclick = null;
+            } else {
+                cancelBtn.hidden = false;
+                cancelBtn.onclick = function() {
+                    if (detailModal) detailModal.hidden = true;
+                    openCancelModal(data.cancelAction, data.fechaIso);
+                };
+            }
+        }
+
+        if (detailModal) detailModal.hidden = false;
+    }
+
+    document.querySelectorAll('[data-open-reserva-detail]').forEach(function(btn) {
+        btn.addEventListener('click', function() { fillReservaDetail(btn); });
     });
+
+    applyAgendaStyles();
 
     if (sel && sel.value && fec && fec.value) {
         refrescar();

@@ -867,82 +867,187 @@ button { font-family: inherit; }
 .cal-day.is-selected { background: var(--brand); color: white; font-weight: 700; }
 
 .agenda { padding: 20px; }
-.agenda-blocks { display: flex; flex-direction: column; gap: 8px; }
-.agenda-block {
-    display: grid;
-    grid-template-columns: 60px 1fr;
-    gap: 14px;
-    align-items: center;
-}
-.block-time {
-    color: var(--text-soft);
-    font-weight: 600;
-    font-size: 13px;
-    font-variant-numeric: tabular-nums;
-    padding-top: 14px;
-    align-self: flex-start;
-}
-.block-content {
-    background: white;
-    border: 1px dashed var(--border);
-    border-radius: var(--radius);
-    padding: 12px 16px;
-    min-height: 38px;
-}
-.block-empty { color: var(--text-soft); font-size: 13px; }
 
-.reservation-pill {
+/* ----- AGENDA TIMELINE (vista tipo calendario) ----- */
+
+.agenda-timeline {
     display: flex;
-    justify-content: space-between;
-    gap: 16px;
-    align-items: center;
-    background: var(--brand-soft-2);
-    border: 1px solid #99f6e4;
+    flex-direction: column;
+    gap: 18px;
+}
+.agenda-tramo {
+    border: 1px solid var(--border);
     border-radius: var(--radius);
+    background: white;
+    overflow: hidden;
+}
+.agenda-tramo-header {
     padding: 10px 14px;
-    margin: -2px 0;
-}
-.reservation-pill + .reservation-pill { margin-top: 8px; }
-.reservation-pill.is-cancelled {
-    background: var(--danger-soft);
-    border-color: #fecaca;
-    text-decoration: line-through;
-    text-decoration-color: rgba(220, 38, 38, 0.4);
-}
-.rp-main { display: flex; flex-direction: column; }
-.rp-client { color: var(--text-muted); font-size: 12px; }
-.rp-side { display: flex; align-items: center; gap: 8px; }
-
-.pagination {
-    display: flex;
-    justify-content: flex-end;
-    align-items: center;
-    gap: 10px;
-    margin-top: 16px;
-}
-.pagination-link {
-    min-width: 88px;
-    padding: 8px 12px;
-    border-radius: var(--radius-sm);
-    border: 1px solid var(--border-strong);
-    background: white;
-    color: var(--text);
+    background: #f8fafc;
+    border-bottom: 1px solid var(--border);
+    color: var(--text-muted);
     font-size: 13px;
     font-weight: 600;
     text-align: center;
 }
-.pagination-link:hover { background: #f8fafc; text-decoration: none; }
-.pagination-link.is-disabled {
-    color: var(--text-soft);
-    background: #f8fafc;
-    cursor: not-allowed;
+.agenda-tramo-grid {
+    position: relative;
+    display: grid;
+    grid-template-columns: var(--agenda-gutter-width, 56px) 1fr;
+    --agenda-gutter-width: 56px;
 }
-.pagination-status { color: var(--text-muted); font-size: 13px; }
+.agenda-gutter {
+    position: relative;
+    border-right: 1px solid var(--border);
+}
+.agenda-gutter-label {
+    position: absolute;
+    left: 0;
+    right: 8px;
+    padding-top: 2px;
+    text-align: right;
+    color: var(--text-soft);
+    font-size: 11px;
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+}
+.agenda-gutter-label.is-hour {
+    color: var(--text-muted);
+    font-weight: 600;
+    font-size: 12px;
+}
+/* La etiqueta del fin del tramo se ancla por su borde inferior para que
+   quede dentro del último slot y no se corte por debajo. */
+.agenda-gutter-label.is-end {
+    padding-top: 0;
+    padding-bottom: 2px;
+    transform: translateY(-100%);
+}
+.agenda-area {
+    position: relative;
+    overflow: hidden;
+}
+.agenda-gridline {
+    position: absolute;
+    left: 0;
+    right: 0;
+    height: 1px;
+    background: #f1f5f9;
+    pointer-events: none;
+}
+.agenda-gridline.is-hour { background: var(--border); }
 
-.block-content:has(.reservation-pill) {
-    background: transparent;
-    border: none;
-    padding: 0;
+.agenda-now {
+    position: absolute;
+    left: 0;
+    right: 0;
+    height: 0;
+    border-top: 2px solid #3b82f6;
+    z-index: 4;
+    pointer-events: none;
+}
+.agenda-now::before {
+    content: '';
+    position: absolute;
+    left: calc(var(--agenda-gutter-width, 56px) - 5px);
+    top: -5px;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #3b82f6;
+}
+
+.agenda-event {
+    position: absolute;
+    background: var(--brand-soft-2);
+    border: 1px solid #99f6e4;
+    border-left: 3px solid var(--brand);
+    border-radius: var(--radius-sm);
+    padding: 4px 8px;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-start;
+    gap: 2px;
+    cursor: pointer;
+    overflow: hidden;
+    text-align: left;
+    font-family: inherit;
+    color: var(--text);
+    box-shadow: var(--shadow-sm);
+    transition: filter 0.15s, box-shadow 0.15s;
+}
+.agenda-event:hover {
+    filter: brightness(0.97);
+    box-shadow: var(--shadow);
+}
+.agenda-event:focus-visible {
+    outline: 2px solid var(--brand);
+    outline-offset: 1px;
+}
+.agenda-event.is-cancelled {
+    background: var(--danger-soft);
+    border-color: #fecaca;
+    border-left-color: var(--danger);
+    text-decoration: line-through;
+    text-decoration-color: rgba(220, 38, 38, 0.5);
+    color: var(--text-muted);
+}
+.agenda-event-name {
+    font-weight: 600;
+    font-size: 13px;
+    line-height: 1.2;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.agenda-event-time {
+    font-size: 11px;
+    color: var(--text-muted);
+    font-variant-numeric: tabular-nums;
+}
+
+/* Sección para reservas fuera del horario abierto (días pasados, etc.) */
+.agenda-tramo-outside { border-style: dashed; }
+.agenda-outside-list {
+    list-style: none;
+    padding: 12px;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+.agenda-outside-list .agenda-event {
+    position: static;
+    width: 100%;
+    height: auto;
+    min-height: 40px;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.reserva-detail {
+    margin: 0;
+    font-size: 14px;
+    display: flex;
+    flex-direction: column;
+}
+.reserva-detail > div {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 16px;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--border);
+}
+.reserva-detail > div:last-child { border-bottom: 0; }
+.reserva-detail > div[hidden] { display: none; }
+.reserva-detail dt { color: var(--text-muted); font-weight: 600; }
+.reserva-detail dd {
+    margin: 0;
+    color: var(--text);
+    text-align: right;
+    word-break: break-word;
 }
 
 /* ---------- DISPONIBILIDAD ---------- */
